@@ -11683,5 +11683,18 @@ window.addEventListener('keydown', function(e) {
 
 </script>
 </div>
+
+<div style="position: fixed; bottom: 10px; right: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 5px 12px; border-radius: 8px; font-size: 11px; font-family: monospace; z-index: 9999; backdrop-filter: blur(4px);">
+        <i class="fas fa-eye text-cyan-500"></i> TOPLAM GİRİŞ: <span id="site-counter" class="text-white font-black text-xs">Yükleniyor...</span>
+    </div>
+
+    <script>
+        fetch('/api/counter')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('site-counter').innerText = data.visits;
+            })
+            .catch(err => console.error("Sayaç okunamadı:", err));
+    </script>
 </body>
 </html>
