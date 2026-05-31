@@ -25,9 +25,8 @@
   var _dimEl    = null;
   var _savedCam = null;
   var _hintEl   = null;
-  var _camLockId = null;   // Kamera kilit döngüsü
-  var _camTarget = null;   // Kilitli kamera hedef noktası
-  var _camDist   = 20;     // Kilitli kamera mesafesi
+  var _camTarget = null;   // Sketch merkez noktası (controls.target)
+  var _savedCtrl = null;   // OrbitControls kayıtlı ayarları
 
   // ─── THREE.JS ERIŞIM ──────────────────────────────────────────────────────
   function S()   { return global.scene; }
@@ -405,49 +404,46 @@
     _curPts = [];
     _drag   = null;
 
-    // Kamerayı kaydet
+    // Kamerayı ve OrbitControls durumunu kaydet
     var cam = CAM();
     _savedCam = { pos: cam.position.clone(), quat: cam.quaternion.clone(), up: cam.up.clone() };
 
-    // Kamerayı yüzey normeline hizala (sabit mesafe)
+    var ctrl = window.controls;
+    if (ctrl) {
+      _savedCtrl = {
+        target:        ctrl.target.clone(),
+        enableRotate:  ctrl.enableRotate,
+        enablePan:     ctrl.enablePan,
+        enableZoom:    ctrl.enableZoom
+      };
+      // ── Sketch modunda OrbitControls'ü kilitle ──────────────────────────
+      ctrl.enableRotate = false;   // Rotasyon KAPALI → kamera sabit kalır
+      ctrl.enablePan    = false;   // Pan da KAPALI → sadece şekil çizilir
+    }
+
+    // Kamerayı yüzey normeline hizala
     var n = _plane.normal.clone();
     var o = _plane.origin.clone();
     _camTarget = o.clone();
-    _camDist   = 20;   // sabit, OrbitControls mesafesinden bağımsız
 
-    setCamToSketch();  // ilk yerleşim
-    startCamLock();    // her frame kilitle
+    var dist = Math.max(cam.position.distanceTo(o), 12);
+    cam.position.copy(o.clone().addScaledVector(n, dist));
+    cam.up.copy(_plane.yAxis);
+    cam.lookAt(o);
+    cam.updateMatrixWorld(true);
+    if (cam.updateProjectionMatrix) cam.updateProjectionMatrix();
+
+    // OrbitControls'ün iç spherical state'ini yeni kamera pozisyonuyla sync et
+    if (ctrl) {
+      ctrl.target.copy(o);
+      ctrl.update();  // Bu, spherical'ı camera.position'dan yeniden hesaplar
+    }
 
     buildSVG();
     renderGrid();
     renderShapes();
     updatePanel();
     showHint('R=Dikdörtgen &nbsp; C=Çember &nbsp; L=Çizgi &nbsp; P=Polygon &nbsp;|&nbsp; Enter / Çift tık: kapat &nbsp;|&nbsp; Ctrl+Z: geri al', '#506080');
-  }
-
-  // Kamerayı sketch düzlemine dik kilitle
-  function setCamToSketch() {
-    var cam = CAM();
-    var n   = _plane.normal.clone();
-    cam.position.copy(_camTarget.clone().addScaledVector(n, _camDist));
-    cam.up.copy(_plane.yAxis);
-    cam.lookAt(_camTarget);
-    cam.updateMatrixWorld(true);
-    if (cam.updateProjectionMatrix) cam.updateProjectionMatrix();
-  }
-
-  function startCamLock() {
-    if (_camLockId) return;
-    (function loop() {
-      if (_state !== 'drawing') { _camLockId = null; return; }
-      setCamToSketch();
-      renderGrid();      // grid ekran değişince güncelle
-      _camLockId = requestAnimationFrame(loop);
-    })();
-  }
-
-  function stopCamLock() {
-    if (_camLockId) { cancelAnimationFrame(_camLockId); _camLockId = null; }
   }
 
   function buildSVG() {
@@ -596,7 +592,16 @@
   function cancel() { cleanup(); }
 
   function cleanup() {
-    stopCamLock();
+    // OrbitControls'ü eski haline getir
+    var ctrl = window.controls;
+    if (ctrl && _savedCtrl) {
+      ctrl.target.copy(_savedCtrl.target);
+      ctrl.enableRotate = _savedCtrl.enableRotate;
+      ctrl.enablePan    = _savedCtrl.enablePan;
+      ctrl.enableZoom   = _savedCtrl.enableZoom;
+      ctrl.update();
+      _savedCtrl = null;
+    }
     _state  = 'idle'; _shapes=[]; _curPts=[]; _drag=null; _plane=null;
     if (_svgEl) { _svgEl.remove(); _svgEl=null; }
     document.removeEventListener('keydown', onKey);
