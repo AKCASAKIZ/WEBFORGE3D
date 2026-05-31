@@ -7120,14 +7120,14 @@ window.selectObject = function(mesh, hit) {
         window.targetSel.mesh.material.emissive.setHex(0x000000);
     window.targetSel = { mesh: mesh };
     window.selectedObject = mesh;
-    if (mesh.material && mesh.material.emissive) mesh.material.emissive.setHex(0x1a3a6a); // Mavi = TARGET
+    if (mesh.material && mesh.material.emissive) mesh.material.emissive.setHex(0x224488); // Mavi = TARGET
     
     var tc = window.transformControl || (typeof transformControl !== 'undefined' ? transformControl : null);
     if (tc) { tc.attach(mesh); tc.enabled = true; tc.update(); }
     
     if (typeof window.updatePropertiesPanel === 'function') window.updatePropertiesPanel(mesh);
     var ts = document.getElementById('target-status'); if(ts) ts.innerText = mesh.userData.id || mesh.name || '-';
-    window._updateCSGButtons();
+    try { window._updateCSGButtons(); } catch(e) {}
 };
 
 window.selectSource = function(mesh, hit) {
