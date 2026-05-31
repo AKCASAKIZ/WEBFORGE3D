@@ -1637,7 +1637,8 @@ function onKeyDown(event) {
     }
 
     // DELETE / BACKSPACE (Toplu Parça Silme)
-    if (event.key === 'Delete' || event.key === 'Backspace') { 
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault(); // macOS'ta browser geri gitmesin
         saveCheckpoint(); 
         let deletedCount = 0;
         
@@ -5700,6 +5701,14 @@ window.addEventListener('load', function() {
             return;
         }
     }
+    if (e.key === 'Escape' && typeof measureMode !== 'undefined' && measureMode) {
+        measureMode = false;
+        measurePoints = [];
+        var mb = document.getElementById('btn-measure');
+        if (mb) { mb.style.background=''; mb.style.boxShadow=''; }
+        if (typeof showNotification === 'function') showNotification('Ölçüm modu kapatıldı', 'info');
+        return;
+    }
     if (e.key === 'Escape' && typeof pushPullMode !== 'undefined' && pushPullMode) {
         ppV3Reset();
         togglePushPullMode();
@@ -9392,35 +9401,46 @@ function buildUI(){
 
   d.innerHTML=
   /* TOP BAR */
-  '<div id="dstBar" style="background:#1a2e4a;border-bottom:2px solid #2563eb;padding:3px 8px;display:flex;align-items:center;gap:4px;flex-shrink:0;min-height:38px;flex-wrap:wrap;">'
-  +'<i class="fas fa-drafting-compass" style="color:#60a5fa;font-size:13px;"></i>'
-  +'<span style="color:#fff;font-weight:900;font-size:13px;letter-spacing:1px;margin-right:4px;">DRAFT STUDIO</span>'
-  +'<select id="dstPaper" onchange="DS_setPaper()" class="dsSel"><option selected>A4</option><option>A3</option><option>A2</option><option>A1</option></select>'
-  +'<select id="dstOrient" onchange="DS_setPaper()" class="dsSel"><option value="P" selected>Portrait</option><option value="L">Landscape</option></select>'
-  +'<select id="dstScale" class="dsSel" onchange="redrawDims()"><option>1:1</option><option>1:2</option><option>1:5</option><option>1:10</option><option>2:1</option><option>5:1</option></select>'
+  '<div id="dstBar" style="background:#0f1923;border-bottom:2px solid #1e3a5f;padding:0 10px;display:flex;align-items:center;gap:6px;flex-shrink:0;height:42px;">'
+  /* Logo */
+  +'<i class="fas fa-drafting-compass" style="color:#38a0fa;font-size:14px;margin-right:2px;"></i>'
+  +'<span style="color:#c8d8f0;font-weight:900;font-size:12px;letter-spacing:2px;margin-right:8px;">DRAFT</span>'
+  /* Ayırıcı */
   +'<div class="dsSep"></div>'
-  +'<button id="dstModeTech" onclick="DS_setMode(\'tech\')" class="dsBtn act"><i class="fas fa-pen-nib"></i> TECHNICAL</button>'
-  +'<button id="dstModeRend" onclick="DS_setMode(\'render\')" class="dsBtn"><i class="fas fa-image"></i> RENDER</button>'
+  /* Kağıt & Yön & Ölçek — kompakt grup */
+  +'<select id="dstPaper" onchange="DS_setPaper()" class="dsSel" title="Kağıt boyutu"><option>A4</option><option>A3</option><option>A2</option><option>A1</option></select>'
+  +'<select id="dstOrient" onchange="DS_setPaper()" class="dsSel" title="Yönlendirme"><option value="P">&#x1D10A; Port</option><option value="L">&#x1D10C; Land</option></select>'
+  +'<select id="dstScale" class="dsSel" onchange="redrawDims()" title="Ölçek"><option>1:1</option><option>1:2</option><option>1:5</option><option>1:10</option><option>2:1</option><option>5:1</option></select>'
   +'<div class="dsSep"></div>'
-  +dsBtn('select','&#x2b61; SELECT')
-  +dsBtn('dim_lin','&#x2194; LINEAR')
-  +dsBtn('dim_hor','&#x2192; HORIZ')
-  +dsBtn('dim_ver','&#x2195; VERT')
-  +dsBtn('dim_rad','R RADIUS')
-  +dsBtn('dim_dia','&#x00D8; DIA')
-  +dsBtn('line','/ LINE')
+  /* Mod */
+  +'<button id="dstModeTech" onclick="DS_setMode(\'tech\')" class="dsBtn act" title="Teknik çizim"><i class="fas fa-pen-nib"></i></button>'
+  +'<button id="dstModeRend" onclick="DS_setMode(\'render\')" class="dsBtn" title="Render görünüm"><i class="fas fa-image"></i></button>'
+  +'<div class="dsSep"></div>'
+  /* ARAÇLAR — ikonlu, title açıklamalı */
+  +dsBtn('select','&#x2b61; SEÇ')
+  +'<div class="dsSep" style="opacity:.4"></div>'
+  +dsBtn('dim_lin','&#x2194; Lin')
+  +dsBtn('dim_hor','&#x2192; Hor')
+  +dsBtn('dim_ver','&#x2195; Ver')
+  +dsBtn('dim_rad','R Rad')
+  +dsBtn('dim_dia','&#x00D8; Dia')
+  +'<div class="dsSep" style="opacity:.4"></div>'
+  +dsBtn('line','/ Çizgi')
   +dsBtn('centerline','&#x2295; CL')
-  +dsBtn('hatch','&#x27CB; HATCH')
-  +dsBtn('balloon','&#x2460; BALLOON')
-  +dsBtn('text','T TEXT')
-  +'<button onclick="DS_addSection()" class="dsBtn" style="color:#fbbf24;">&#x2702; SECTION</button>'
+  +dsBtn('hatch','&#x27CB; Tarama')
+  +dsBtn('text','T Metin')
+  +dsBtn('balloon','&#x2460; Balon')
+  +'<button onclick="DS_addSection()" class="dsBtn" title="Kesit çizgisi" style="color:#fbbf24;">&#x2702; Kesit</button>'
   +'<div style="flex:1;"></div>'
-  +'<button onclick="DS_captureAll()" style="background:#0e7490;color:#fff;border:none;border-radius:4px;padding:2px 10px;font-size:11px;font-weight:900;cursor:pointer;"><i class="fas fa-sync"></i> UPDATE</button>'
-  +'<button onclick="DS_undo()" class="dsBtn" style="margin-left:4px;" title="Ctrl+Z"><i class="fas fa-undo"></i></button>'
-  +'<button onclick="DS_exportSVG()" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:2px 10px;font-size:11px;font-weight:900;cursor:pointer;margin-left:4px;"><i class="fas fa-download"></i> SVG</button>'
-  +'<button onclick="DS_exportPDF()" style="background:#16a34a;color:#fff;border:none;border-radius:4px;padding:2px 10px;font-size:11px;font-weight:900;cursor:pointer;margin-left:3px;"><i class="fas fa-file-pdf"></i> PDF</button>'
-  +'<button id="dstBtnPrintArea" onclick="DS_startPrintArea()" style="background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:2px 10px;font-size:11px;font-weight:900;cursor:pointer;margin-left:3px;"><i class="fas fa-crop-alt"></i> PRINT AREA</button>'
-  +'<button onclick="window.closeDraftStudio()" style="background:#dc2626;color:#fff;border:none;border-radius:4px;padding:2px 10px;font-size:11px;font-weight:900;cursor:pointer;margin-left:4px;"><i class="fas fa-times"></i></button>'
+  /* Sağ eylemler */
+  +'<button onclick="DS_captureAll()" class="dsBtn" title="Görünümleri güncelle" style="background:rgba(14,116,144,.4);border-color:#0e7490;color:#67e8f9;"><i class="fas fa-sync-alt"></i></button>'
+  +'<button onclick="DS_undo()" class="dsBtn" title="Geri al (Ctrl+Z)"><i class="fas fa-undo"></i></button>'
+  +'<div class="dsSep"></div>'
+  +'<button onclick="DS_exportSVG()" class="dsBtn" title="SVG olarak dışa aktar" style="color:#93c5fd;"><i class="fas fa-bezier-curve"></i> SVG</button>'
+  +'<button onclick="DS_exportPDF()" class="dsBtn" title="PDF olarak dışa aktar" style="color:#86efac;"><i class="fas fa-file-pdf"></i> PDF</button>'
+  +'<button id="dstBtnPrintArea" onclick="DS_startPrintArea()" class="dsBtn" title="Baskı alanı seç" style="color:#c4b5fd;"><i class="fas fa-crop-alt"></i></button>'
+  +'<div class="dsSep"></div>'
+  +'<button onclick="window.closeDraftStudio()" style="background:rgba(220,38,38,.2);border:1px solid #7f1d1d;color:#fca5a5;border-radius:4px;padding:3px 10px;font-size:11px;font-weight:900;cursor:pointer;transition:.1s;" onmouseover="this.style.background=\'rgba(220,38,38,.6)\'" onmouseout="this.style.background=\'rgba(220,38,38,.2)\'"><i class="fas fa-times"></i></button>'
   +'</div>'
   /* MAIN */
   +'<div style="display:flex;flex:1;overflow:hidden;">'
@@ -9436,7 +9456,7 @@ function buildUI(){
   +'<button onclick="DS_addView(\'back\')"   class="dsVBtn">BACK</button>'
   +'<button onclick="DS_addView(\'iso\')" class="dsVBtn" style="grid-column:span 2;background:rgba(99,102,241,.4);">ISOMETRIC</button>'
   +'</div>'
-  +'<div style="font-size:9px;color:#475569;line-height:1.4;">Drag views to reposition.<br>Click to select, Del to delete.</div>'
+  +'<div style="font-size:9px;color:#475569;line-height:1.4;margin-top:2px;">Sürükle: konum &nbsp;|&nbsp; Del: sil</div>'
   /* dim settings */
   +'<div style="border-top:1px solid #334155;padding-top:5px;">'
   +'<div class="dsLbl" style="color:#f59e0b;">&#x1F4CF; DIMENSION</div>'
