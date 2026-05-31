@@ -9135,7 +9135,7 @@ window.takePhotoRender = async function() {
             var mx = (x1 + x2) / 2; var my = (y1 + y2) / 2;
             ctx.save(); ctx.translate(mx, my); if(isVert) ctx.rotate(-Math.PI/2);
             var tw = ctx.measureText(text).width;
-            ctx.fillStyle = '#ffffff'; ctx.fillRect(-tw/2-5, -12, tw+10, 24);
+            ctx.fillStyle = 'rgba(14,22,33,0.75)'; ctx.fillRect(-tw/2-5, -12, tw+10, 24);
             ctx.fillStyle = '#0f172a'; ctx.fillText(text, 0, 0); ctx.restore(); 
         }
 
@@ -9397,7 +9397,7 @@ function buildUI(){
   var d=document.createElement('div');
   d.id='dstR';
   d.className='hidden';
-  d.style.cssText='position:fixed;top:56px;left:0;right:0;bottom:0;z-index:29000;display:none;flex-direction:column;background:#cfc5a8;font-family:Segoe UI,system-ui,sans-serif;pointer-events:auto;';
+  d.style.cssText='position:fixed;top:56px;left:0;right:0;bottom:0;z-index:29000;display:none;flex-direction:column;background:#0e1621;font-family:Segoe UI,system-ui,sans-serif;pointer-events:auto;';
 
   d.innerHTML=
   /* TOP BAR */
@@ -9505,11 +9505,11 @@ function buildUI(){
   +'<marker id="dstArrR" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto"><polygon points="5,0 5,5 0,2.5" fill="#1a2e4a"/></marker>'
   +'</defs>'
   /* canvas bg */
-  +'<rect id="dstBg" fill="white" x="0" y="0" width="100%" height="100%"/>'
+  +'<rect id="dstBg" fill="#0e1621" x="0" y="0" width="100%" height="100%"/>'
   /* paper group — all children in mm */
   +'<g id="dstPG">'
-  +'<rect id="dstPaper" x="0" y="0" fill="white" stroke="#94a3b8" stroke-width="0.3"/>'
-  +'<rect id="dstFrame" fill="none" stroke="#1a2e4a" stroke-width="0.5"/>'
+  +'<rect id="dstPaper" x="0" y="0" fill="none" stroke="#2a3a55" stroke-width="0.5" stroke-dasharray="3,2"/>'
+  +'<rect id="dstFrame" fill="none" stroke="#2a3a55" stroke-width="0.4" stroke-dasharray="5,3"/>'
   +'<g id="dstVG"></g>'  /* views */
   +'<g id="dstDG"></g>'  /* dims */
   +'<g id="dstAG"></g>'  /* annotations */
@@ -10122,7 +10122,7 @@ function drawView(vobj){
   sa(rh,{cx:rot_cx,cy:rot_cy,r:3,fill:'#f59e0b',stroke:'white','stroke-width':0.5,cursor:'ew-resize'});
   var rht=svgE('text');
   sa(rht,{x:rot_cx,y:rot_cy+1.1,'text-anchor':'middle','dominant-baseline':'middle',
-    'font-size':2.8,'font-family':'Arial',fill:'white','pointer-events':'none'});
+    'font-size':2.8,'font-family':'Arial',fill:'#c8daf5','pointer-events':'none'});
   rht.textContent='↻';
   var rhtt=svgE('title'); rhtt.textContent='Drag to rotate view'; rh.appendChild(rhtt);
   (function(vo){
@@ -10162,7 +10162,7 @@ function drawView(vobj){
     sa(hc,{cx:hx,cy:hy,r:HSZ,fill:'#3b82f6',stroke:'white','stroke-width':0.5,cursor:'crosshair'});
     var ht=svgE('text');
     sa(ht,{x:hx,y:hy+0.6,'text-anchor':'middle','dominant-baseline':'middle',
-      'font-size':2,'font-weight':'bold','font-family':'Arial',fill:'white','pointer-events':'none'});
+      'font-size':2,'font-weight':'bold','font-family':'Arial',fill:'#a0bcd8','pointer-events':'none'});
     ht.textContent={top:'▲',bottom:'▼',right:'▶',left:'◀'}[side]||'+';
 
     /* tooltip */
@@ -10207,7 +10207,7 @@ function drawViewTech(grp,vobj){
   }
   /* white background */
   var bg=svgE('rect');
-  sa(bg,{x:vobj.x,y:vobj.y,width:vobj.w,height:vobj.h,fill:'white',stroke:'none'});
+  sa(bg,{x:vobj.x,y:vobj.y,width:vobj.w,height:vobj.h,fill:'none',stroke:'#2a3a55','stroke-width':'0.3','stroke-dasharray':'4,2'});
   grp.appendChild(bg);
 
   var ed=DS.viewEdges[vobj.name];
@@ -10236,7 +10236,7 @@ function drawViewTech(grp,vobj){
     ed.vis.forEach(function(e){
       var a=tp(e.x1,e.y1), b=tp(e.x2,e.y2);
       var l=svgE('line');
-      sa(l,{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'#111','stroke-width':LW.vis,'stroke-linecap':'round','vector-effect':'non-scaling-stroke'});
+      sa(l,{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'#c8daf5','stroke-width':LW.vis,'stroke-linecap':'round','vector-effect':'non-scaling-stroke'});
       edgeSub.appendChild(l);
     });
 
@@ -10247,7 +10247,7 @@ function drawViewTech(grp,vobj){
       var l=svgE('line');
       sa(l,{
           x1:a.x, y1:a.y, x2:b.x, y2:b.y, 
-          stroke: '#444',
+          stroke: '#6a88aa',
           'stroke-width': 0.7,
           'stroke-dasharray': '4,3',
           'stroke-linecap': 'butt',
@@ -10263,7 +10263,7 @@ function drawViewTech(grp,vobj){
       var l=svgE('line');
       sa(l,{
           x1:a.x, y1:a.y, x2:b.x, y2:b.y, 
-          stroke: '#00a', 
+          stroke: '#3a7abf', 
           'stroke-width': 0.3, // LW.cen (0.7) çok kalındı, 0.3 ile hassaslaştırdık
           'stroke-dasharray': '12, 3, 2, 3', // Boşlukları biraz daha rahatlattık
           'stroke-linecap': 'butt',
@@ -10412,7 +10412,7 @@ function dimA(x,y,dx,dy){
     /* white bg behind text */
     var tw=val.toString().length*ts*0.62+2;
     var tbg=svgE('rect');
-    sa(tbg,{x:mx-tw/2,y:my-ts*0.75,width:tw,height:ts,fill:'white',transform:'rotate('+textAng+','+mx+','+my+')'});
+    sa(tbg,{x:mx-tw/2,y:my-ts*0.75,width:tw,height:ts,fill:'rgba(14,22,33,0.8)',transform:'rotate('+textAng+','+mx+','+my+')'});
     grp.appendChild(tbg);
     var tt=svgE('text');
     sa(tt,{x:mx,y:my+ts*0.32,'text-anchor':'middle','font-size':ts,'font-weight':'bold',
@@ -10501,7 +10501,7 @@ function drawCL(x1,y1,x2,y2){
 function drawBalloon(cx,cy,num){
   var g=document.getElementById('dstAG'); if(!g) return;
   var grp=svgE('g'); grp.id='bal_'+Date.now();
-  var c=svgE('circle'); sa(c,{cx:cx,cy:cy,r:5,fill:'white',stroke:'#000','stroke-width':LW.dim}); grp.appendChild(c);
+  var c=svgE('circle'); sa(c,{cx:cx,cy:cy,r:5,fill:'#1a2e4a',stroke:'#60a5fa','stroke-width':LW.dim}); grp.appendChild(c);
   var t=svgE('text'); sa(t,{x:cx,y:cy+1.5,'text-anchor':'middle','font-size':4,'font-weight':'bold','font-family':'Arial',fill:'#000'}); t.textContent=num||'1'; grp.appendChild(t);
   g.appendChild(grp);
   DS.entities.push({id:grp.id,type:'balloon',cx:cx,cy:cy,num:num||1});
