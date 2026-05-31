@@ -1361,6 +1361,7 @@ if (!container) {
     camera.position.set(200, 200, 200);
     
     controls = new THREE.OrbitControls(camera, renderer.domElement);
+    window.controls = controls;  // Sketch2D erişimi için
     controls.enableDamping      = false;   // Damping kapalı → anlık tepki
     controls.dampingFactor      = 0;
     controls.rotateSpeed        = 1.5;
@@ -5563,6 +5564,80 @@ window.applyArrayModal = function() {
 // FILLET / CHAMFER — Köşe Radyusu
 // =============================================================================
 
+// =============================================================================
+// SKETCH SHAPE HELPERS
+// =============================================================================
+window.setSketchSnap = function(mode) {
+    window._sketchSnap = mode;
+    ['free','grid','axis'].forEach(function(m) {
+        var btn = document.getElementById('sks-' + m);
+        if (!btn) return;
+        btn.className = btn.className.replace(/bg-indigo-600 text-white border-indigo-400/g, 'bg-slate-700 text-gray-300 border-slate-600')
+                                     .replace(/bg-slate-700 text-gray-300 border-slate-600/g, 'bg-slate-700 text-gray-300 border-slate-600');
+        if (m === mode) btn.className = btn.className.replace('bg-slate-700 text-gray-300 border-slate-600', 'bg-indigo-600 text-white border-indigo-400');
+    });
+};
+
+window.addSketchRect = function() {
+    var w = window.evalDim(document.getElementById('sketch-w')) || 30;
+    var h = window.evalDim(document.getElementById('sketch-h')) || 30;
+    var hw = w/2, hh = h/2;
+    sketchPoints = [
+        new THREE.Vector3(-hw, 0, -hh),
+        new THREE.Vector3( hw, 0, -hh),
+        new THREE.Vector3( hw, 0,  hh),
+        new THREE.Vector3(-hw, 0,  hh),
+        new THREE.Vector3(-hw, 0, -hh)
+    ];
+    if (typeof drawSketchPreview === 'function') drawSketchPreview();
+    var cnt = document.getElementById('sketch-pt-count');
+    if (cnt) cnt.textContent = '⬜ ' + w + '×' + h + 'mm dikdörtgen → Extrude et';
+    showNotification('Dikdörtgen profil oluşturuldu', 'success');
+};
+
+window.addSketchCircle = function() {
+    var r = (window.evalDim(document.getElementById('sketch-w')) || 30) / 2;
+    var segs = 32;
+    sketchPoints = [];
+    for (var i = 0; i <= segs; i++) {
+        var a = (i / segs) * Math.PI * 2;
+        sketchPoints.push(new THREE.Vector3(Math.cos(a)*r, 0, Math.sin(a)*r));
+    }
+    if (typeof drawSketchPreview === 'function') drawSketchPreview();
+    var cnt = document.getElementById('sketch-pt-count');
+    if (cnt) cnt.textContent = '⬤ Ø' + (r*2) + 'mm daire → Extrude et';
+    showNotification('Daire profil oluşturuldu', 'success');
+};
+
+window.addSketchTriangle = function() {
+    var w = window.evalDim(document.getElementById('sketch-w')) || 30;
+    var h2 = w * Math.sqrt(3) / 2;
+    sketchPoints = [
+        new THREE.Vector3(0, 0, -h2*0.667),
+        new THREE.Vector3(w/2, 0, h2*0.333),
+        new THREE.Vector3(-w/2, 0, h2*0.333),
+        new THREE.Vector3(0, 0, -h2*0.667)
+    ];
+    if (typeof drawSketchPreview === 'function') drawSketchPreview();
+    var cnt = document.getElementById('sketch-pt-count');
+    if (cnt) cnt.textContent = '△ ' + w + 'mm üçgen → Extrude et';
+    showNotification('Üçgen profil oluşturuldu', 'success');
+};
+
+window.addSketchHexagon = function() {
+    var w = window.evalDim(document.getElementById('sketch-w')) || 30;
+    var r = w / 2;
+    sketchPoints = [];
+    for (var i = 0; i <= 6; i++) {
+        var a = (i / 6) * Math.PI * 2 - Math.PI/6;
+        sketchPoints.push(new THREE.Vector3(Math.cos(a)*r, 0, Math.sin(a)*r));
+    }
+    if (typeof drawSketchPreview === 'function') drawSketchPreview();
+    var cnt = document.getElementById('sketch-pt-count');
+    if (cnt) cnt.textContent = '⬡ SW' + w + 'mm altıgen → Extrude et';
+    showNotification('Altıgen profil oluşturuldu', 'success');
+};
+
 
 window.toggleMainGrid = function() {
     var g = scene.getObjectByName('MainGrid');
@@ -5732,6 +5807,42 @@ window.addEventListener('load', function() {
 function toggleRightPanel() { /* disabled - always open */ }
 
 
+// =============================================================================
+// 2D SKETCH (ESKİZ) VE EXTRUDE MOTORU
+// =============================================================================
+let isSketchMode = false;
+let sketchPoints = []; // Çizilen noktalar
+let sketchLines = null; // Mavi önizleme çizgisi
+let sketchMarkers = []; // Kırmızı nokta işaretçileri
+
+
+
+
+
+function closeSketchProfile() {
+    if (sketchPoints.length > 2) {
+        // İlk noktayı sona ekleyerek şekli kapat
+        sketchPoints.push(sketchPoints[0].clone());
+        updateSketchLines();
+        showNotification("Profil Kapatıldı. Katıya çevirebilirsiniz.", "success");
+    }
+}
+
+function updateSketchLines() {
+    if (sketchLines) scene.remove(sketchLines);
+    if (sketchPoints.length < 2) return;
+    
+    const geo = new THREE.BufferGeometry().setFromPoints(sketchPoints);
+    const mat = new THREE.LineBasicMaterial({ color: 0x4f46e5, linewidth: 3 });
+    sketchLines = new THREE.Line(geo, mat);
+    
+    // Grid'in içinde kaybolmaması için normal yönünde milimetrik havaya kaldır
+    const normal = new THREE.Vector3(0,0,1).applyQuaternion(surfaceGridHelper.quaternion);
+    sketchLines.position.add(normal.multiplyScalar(0.05));
+    
+    scene.add(sketchLines);
+}
+//sketch//
 
 
 // =============================================================================
@@ -7547,6 +7658,11 @@ function onMouseMove(event) {
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
 
+    // Sketch3 mouse move
+    if (typeof sk3 !== 'undefined' && sk3.active) {
+        window.sk3HandleMouseMove(event);
+    }
+    // Push/Pull handled by dedicated listeners
 
     // ── EDGE PICK MODU (Mate Edge-to-Edge) ──
     if (window.edgePickState === 'pick_target' || window.edgePickState === 'pick_source') {
@@ -7598,6 +7714,7 @@ function onMouseMove(event) {
 
     // Modlardan herhangi biri açık mı?
     if ((typeof isPMIMode !== 'undefined' && isPMIMode) || 
+        (typeof isSketchMode !== 'undefined' && isSketchMode) || 
         (typeof isSweepMode !== 'undefined' && isSweepMode) || 
         (typeof measureMode !== 'undefined' && measureMode)) {
         snapActive = true;
@@ -8210,6 +8327,46 @@ function separateDisconnectedParts() {
     }, 100);
 }
 
+// =============================================================================
+// ALT SKETCH MENÜSÜ KONTROLÜ
+// =============================================================================
+
+// 1. SEKME DEĞİŞTİRME (DRAW / MODIFY / DIM)
+function switchBottomTab(tabName) {
+    // İçerikleri Gizle/Göster
+    ['draw', 'modify', 'dim'].forEach(t => {
+        const content = document.getElementById('tab-content-' + t);
+        const btn = document.getElementById('btn-tab-' + t);
+        
+        if (t === tabName) {
+            content.classList.remove('hidden');
+            // Aktif Tab Stili
+            btn.className = "px-6 py-2 text-xs font-black text-indigo-700 border-b-4 border-indigo-600 bg-white transition";
+        } else {
+            content.classList.add('hidden');
+            // Pasif Tab Stili
+            btn.className = "px-6 py-2 text-xs font-bold text-gray-500 hover:text-indigo-600 hover:bg-gray-50 border-b-4 border-transparent transition";
+        }
+    });
+}
+
+// 2. SKETCH MODUNA GİRİŞ (MENÜYÜ AÇ)
+// =============================================================================
+// GERÇEKÇİ 2D SKETCH ORTAMINA GEÇİŞ MOTORU (CYAN PLANE & DİK KAMERA)
+// =============================================================================
+
+// Kameranın eski yerini hatırlaması için hafıza
+window.originalCameraState = null;
+
+
+
+
+// =============================================================================
+// GELİŞMİŞ ÖLÇÜM SİSTEMİ (LINEAR, RADIUS, DIAMETER)
+// =============================================================================
+let currentMeasureType = 'linear'; // 'linear', 'radius', 'diameter'
+
+// 1. Tip Değiştirme
 function setMeasureType(type) {
     currentMeasureType = type;
     
@@ -8265,6 +8422,58 @@ function addArrowTip(group, from, to, color) {
     
     group.add(cone);
 }
+
+
+
+// =============================================================================
+// EKSİK SKETCH YARDIMCI FONKSİYONLARI (RECT, CIRCLE, POLYGON)
+// =============================================================================
+
+// 1. DİKDÖRTGEN OLUŞTURUCU
+function createRectFromTwoPoints(p1, p2) {
+    if(!surfaceGridHelper) return;
+    const gd = surfaceGridHelper.userData;
+    
+    // P1 ve P2 arasındaki farkı Grid'in yerel eksenlerine izdüşür
+    const diff = p2.clone().sub(p1);
+    const dx = diff.dot(gd.right);
+    const dy = diff.dot(gd.up);
+    
+    // Köşe noktalarını hesapla
+    // P1 -> +X -> P3 -> +Y -> P2 -> -X -> P4 -> -Y -> P1
+    const p3 = p1.clone().add(gd.right.clone().multiplyScalar(dx));
+    const p4 = p1.clone().add(gd.up.clone().multiplyScalar(dy));
+    
+    // Sıralı noktalar (Çizgi sırası)
+    sketchPoints = [p1, p3, p2, p4, p1];
+    updateSketchLines();
+}
+
+// 2. DAİRE OLUŞTURUCU
+function createCircleFromCenterRadius(center, radius) {
+    createPolygonShape(center, radius, 64); // 64 kenarlı çokgen = Daire
+}
+
+// 3. ÇOKGEN OLUŞTURUCU
+function createPolygonShape(center, radius, sides) {
+    if(!surfaceGridHelper) return;
+    const gd = surfaceGridHelper.userData;
+    sketchPoints = [];
+    
+    for(let i=0; i<=sides; i++) {
+        const theta = (i / sides) * Math.PI * 2;
+        const x = Math.cos(theta) * radius;
+        const y = Math.sin(theta) * radius;
+        
+        // Grid düzleminde noktayı bul
+        const pt = center.clone()
+            .add(gd.right.clone().multiplyScalar(x))
+            .add(gd.up.clone().multiplyScalar(y));
+        sketchPoints.push(pt);
+    }
+    updateSketchLines();
+}
+
 
 
 
@@ -8492,6 +8701,19 @@ function addLabelSprite(group, text, pos) {
 function onMouseDown(event) {
     if (transformControl.dragging) return;
     if (transformControl.axis !== null) return;
+
+    // ── Sketch mode (highest priority) ──
+    if (event.button === 0) {
+        if (window.sk3FacePicking && typeof window.sk3HandleFacePick === 'function') {
+            window.sk3HandleFacePick(event);
+            return;
+        }
+        if (typeof window.sk3 !== 'undefined' && window.sk3.active) {
+            if (typeof window.sk3HandleClick === 'function') window.sk3HandleClick(event);
+            return;  // do not process selection or other events during sketch
+        }
+    }
+
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
