@@ -54,6 +54,12 @@ export const MATERIAL_SPECS: Record<MaterialType, MaterialProperties> = {
   glass: { name: 'Silica Glass', density: 2.2, color: '#e0f7fa', roughness: 0.1, metalness: 0.1 },
 };
 
+export interface DimensionConstraint {
+  min: number;
+  max: number;
+  enabled: boolean;
+}
+
 export interface CADSolid {
   id: string;
   name: string;
@@ -65,6 +71,7 @@ export interface CADSolid {
   materialType: MaterialType;
   params: SolidParams;
   parentSolidId?: string; // used for feature tree history
+  constraints?: Record<string, DimensionConstraint>;
 }
 
 export interface SketchProfile {
