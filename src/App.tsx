@@ -751,6 +751,16 @@ export default function App() {
     };
   }, [sketchMode, activeFace, sketchProfile]);
 
+  // Project a 3D vector to 2D screen coordinate using active camera and canvas rect
+  const projectPoint = React.useCallback((vec: THREE.Vector3): { x: number; y: number } => {
+    if (!cameraRef.current || !canvasRef.current) return { x: 0, y: 0 };
+    const rect = canvasRef.current.getBoundingClientRect();
+    const temp = vec.clone().project(cameraRef.current);
+    const x = ((temp.x + 1) * rect.width) / 2;
+    const y = ((-temp.y + 1) * rect.height) / 2;
+    return { x, y };
+  }, []);
+
   // Core volume and estimated weight values
   const totalVolume = calculateTotalVolume(solids);
   const totalMass = calculateTotalMass(solids);
@@ -780,7 +790,7 @@ export default function App() {
           className="flex-1 h-full relative overflow-hidden bg-gradient-to-b from-slate-950/20 via-slate-950/10 to-transparent"
         >
           {/* Canvas */}
-          <canvas ref={canvasRef} className="w-full h-full block touch-none" />
+          <canvas id="three-canvas" ref={canvasRef} className="w-full h-full block touch-none" />
 
           {/* Interactive 2D Drawing Board overlay */}
           {sketchMode && activeFace && (
@@ -788,8 +798,7 @@ export default function App() {
               sketchProfile={sketchProfile}
               setSketchProfile={setSketchProfile}
               activeFace={activeFace}
-              camera={cameraRef.current}
-              canvasElement={canvasRef.current}
+              projectPoint={projectPoint}
               showGridSetting={showGridSetting}
               onUpdateValue={handleUpdateValue}
             />
