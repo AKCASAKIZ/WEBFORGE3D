@@ -13,7 +13,8 @@ import {
   SphereParams, 
   ConeParams, 
   SketchParams,
-  MATERIAL_SPECS
+  MATERIAL_SPECS,
+  DimensionConstraint
 } from './types';
 import { getFaceCoordinates, calculateTotalVolume, calculateTotalMass } from './utils';
 import { Header } from './components/Header';
@@ -450,10 +451,64 @@ export default function App() {
     );
   };
 
-  // Change parameters of box or cylinder in real-time
+  // Change parameters of box or cylinder in real-time with constraint validation
   const handleChangeSolidParams = (id: string, p: SolidParams) => {
     setSolids((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, params: p } : s))
+      prev.map((s) => {
+        if (s.id === id) {
+          const updatedParams = { ...p };
+          if (s.constraints) {
+            Object.keys(updatedParams).forEach((key) => {
+              const constraint = s.constraints?.[key];
+              if (constraint?.enabled) {
+                const typedKey = key as keyof SolidParams;
+                const originalVal = updatedParams[typedKey];
+                if (typeof originalVal === 'number') {
+                  (updatedParams as any)[typedKey] = Math.max(
+                    constraint.min,
+                    Math.min(constraint.max, originalVal)
+                  );
+                }
+              }
+            });
+          }
+          return { ...s, params: updatedParams };
+        }
+        return s;
+      })
+    );
+  };
+
+  // Change constraints of a solid in real-time
+  const handleChangeSolidConstraints = (id: string, paramKey: string, constraint: DimensionConstraint) => {
+    setSolids((prev) =>
+      prev.map((s) => {
+        if (s.id === id) {
+          const currentConstraints = s.constraints || {};
+          const updatedConstraints = {
+            ...currentConstraints,
+            [paramKey]: constraint,
+          };
+
+          const updatedParams = { ...s.params };
+          if (constraint.enabled) {
+            const val = (updatedParams as any)[paramKey];
+            if (typeof val === 'number') {
+              (updatedParams as any)[paramKey] = Math.max(
+                constraint.min,
+                Math.min(constraint.max, val)
+              );
+            }
+          }
+
+          return {
+            ...s,
+            constraints: updatedConstraints,
+            params: updatedParams,
+          };
+        }
+        return s;
+      })
     );
   };
 
@@ -518,14 +573,16 @@ export default function App() {
     transformControls.addEventListener('dragging-changed', (event) => {
       orbitControls.enabled = !event.value;
       
-      // Save state on release
-      if (!event.value && transformControls.object) {
+      // Save state when drag starts (saving current scene state before movement takes place)
+      if (event.value) {
+        saveCheckpoint(solids);
+      } else if (transformControls.object) {
+        // Drag ended: update coordinates
         const obj = transformControls.object as THREE.Mesh;
         const sId = obj.name;
         
-        // Find correct solid index to update position
+        // Find correct solid index to update position - pure updater
         setSolids((prevSolids) => {
-          saveCheckpoint(prevSolids);
           return prevSolids.map((s) => {
             if (s.id === sId) {
               return {
@@ -937,6 +994,7 @@ export default function App() {
           onChangeSolidParams={handleChangeSolidParams}
           onChangeSolidPosition={handleChangeSolidPosition}
           onChangeSolidRotation={handleChangeSolidRotation}
+          onChangeSolidConstraints={handleChangeSolidConstraints}
           totalVolume={totalVolume}
           totalMass={totalMass}
         />
