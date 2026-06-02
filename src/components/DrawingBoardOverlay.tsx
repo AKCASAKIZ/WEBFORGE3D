@@ -6,8 +6,7 @@ interface DrawingBoardOverlayProps {
   sketchProfile: SketchProfile;
   setSketchProfile: (updater: (prev: SketchProfile) => SketchProfile) => void;
   activeFace: ActiveFace | null;
-  camera: THREE.Camera | null;
-  canvasElement: HTMLCanvasElement | null;
+  projectPoint: (vec: THREE.Vector3) => { x: number; y: number };
   showGridSetting: boolean;
   onUpdateValue: (field: 'width' | 'height' | 'radius' | 'u' | 'v', value: number) => void;
 }
@@ -16,8 +15,7 @@ export const DrawingBoardOverlay: React.FC<DrawingBoardOverlayProps> = ({
   sketchProfile,
   setSketchProfile,
   activeFace,
-  camera,
-  canvasElement,
+  projectPoint,
   showGridSetting,
   onUpdateValue,
 }) => {
@@ -43,24 +41,14 @@ export const DrawingBoardOverlay: React.FC<DrawingBoardOverlayProps> = ({
   const [editValue, setEditValue] = useState<string>('');
   const [editPosition, setEditPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Project 3D vector to screen pixel coordinates
-  const project3DTo2D = (
-    vec: THREE.Vector3,
-    cam: THREE.Camera,
-    rect: DOMRect | null
-  ): { x: number; y: number } => {
-    if (!rect) return { x: 0, y: 0 };
-    const temp = vec.clone().project(cam);
-    const x = ((temp.x + 1) * rect.width) / 2;
-    const y = ((-temp.y + 1) * rect.height) / 2;
-    return { x, y };
-  };
-
   useEffect(() => {
-    if (!activeFace || !camera || !canvasElement) return;
+    if (!activeFace) return;
 
     const updateProjections = () => {
-      const rect = canvasElement.getBoundingClientRect();
+      const canvas = document.getElementById('three-canvas') as HTMLCanvasElement | null;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+
       const faceCenterVec = new THREE.Vector3(
         activeFace.center[0],
         activeFace.center[1],
@@ -82,8 +70,8 @@ export const DrawingBoardOverlay: React.FC<DrawingBoardOverlayProps> = ({
         .addScaledVector(uVec, sketchProfile.u)
         .addScaledVector(vVec, sketchProfile.v);
 
-      const fC = project3DTo2D(faceCenterVec, camera, rect);
-      const sC = project3DTo2D(shapeCenterVec, camera, rect);
+      const fC = projectPoint(faceCenterVec);
+      const sC = projectPoint(shapeCenterVec);
 
       // Width and height endpoints helper vectors
       // We will project endpoints to draw dimension lines
@@ -106,17 +94,17 @@ export const DrawingBoardOverlay: React.FC<DrawingBoardOverlayProps> = ({
         .addScaledVector(uVec, sketchProfile.radius * radCos)
         .addScaledVector(vVec, sketchProfile.radius * radSin);
 
-      const wArrowL = project3DTo2D(widthLeftVec, camera, rect);
-      const wArrowR = project3DTo2D(widthRightVec, camera, rect);
-      const hArrowB = project3DTo2D(heightBottomVec, camera, rect);
-      const hArrowT = project3DTo2D(heightTopVec, camera, rect);
-      const rArrowE = project3DTo2D(radiusEndVec, camera, rect);
+      const wArrowL = projectPoint(widthLeftVec);
+      const wArrowR = projectPoint(widthRightVec);
+      const hArrowB = projectPoint(heightBottomVec);
+      const hArrowT = projectPoint(heightTopVec);
+      const rArrowE = projectPoint(radiusEndVec);
 
       // Position dimension line endpoints
       // Horizon (U offset dimension): from (faceCenter) to (faceCenter + uOffset)
       const uOffsetEndVec = faceCenterVec.clone().addScaledVector(uVec, sketchProfile.u);
       const uLStart = fC;
-      const uLEnd = project3DTo2D(uOffsetEndVec, camera, rect);
+      const uLEnd = projectPoint(uOffsetEndVec);
 
       // Vertical (V offset dimension): from (faceCenter + uOffset) to (shapeCenter)
       const vLStart = uLEnd;
@@ -125,8 +113,8 @@ export const DrawingBoardOverlay: React.FC<DrawingBoardOverlayProps> = ({
       setDimensions({
         width: rect.width,
         height: rect.height,
-        uProj: project3DTo2D(faceCenterVec.clone().add(uVec), camera, rect),
-        vProj: project3DTo2D(faceCenterVec.clone().add(vVec), camera, rect),
+        uProj: projectPoint(faceCenterVec.clone().add(uVec)),
+        vProj: projectPoint(faceCenterVec.clone().add(vVec)),
         shapeCenter: sC,
         faceCenter: fC,
         widthArrowLeft: wArrowL,
@@ -151,9 +139,10 @@ export const DrawingBoardOverlay: React.FC<DrawingBoardOverlayProps> = ({
       window.removeEventListener('resize', updateProjections);
       clearInterval(interval);
     };
-  }, [activeFace, camera, canvasElement, sketchProfile]);
+  }, [activeFace, projectPoint, sketchProfile]);
 
-  if (!activeFace || !camera || !canvasElement) return null;
+  const canvasExists = !!document.getElementById('three-canvas');
+  if (!activeFace || !canvasExists) return null;
 
   // Handle open numeric click edit
   const handleLabelClick = (
