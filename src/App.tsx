@@ -20,7 +20,8 @@ import { getFaceCoordinates, calculateTotalVolume, calculateTotalMass } from './
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DrawingBoardOverlay } from './components/DrawingBoardOverlay';
-import { Plus, Check, Play, Settings, Compass, Sliders, Box as BoxIcon, Eye } from 'lucide-react';
+import { RulerHUD } from './components/RulerHUD';
+import { Plus, Check, Play, Settings, Compass, Sliders, Box as BoxIcon, Eye, Ruler } from 'lucide-react';
 
 const INITIAL_SOLIDS: CADSolid[] = [
   {
@@ -67,6 +68,22 @@ export default function App() {
   // Let the grid be OFF by default to satisfy: "with grid, unnecessary".
   // But keep it toggleable for premium grading!
   const [showGridSetting, setShowGridSetting] = useState<boolean>(false);
+
+  // Precision 3D Ruler States
+  const [rulerActive, setRulerActive] = useState<boolean>(false);
+  const [rulerPoints, setRulerPoints] = useState<[number, number, number][]>([]);
+  const [rulerHoverPoint, setRulerHoverPoint] = useState<[number, number, number] | null>(null);
+
+  const clearRuler = () => {
+    setRulerPoints([]);
+    setRulerHoverPoint(null);
+  };
+
+  useEffect(() => {
+    if (!rulerActive) {
+      clearRuler();
+    }
+  }, [rulerActive]);
 
   // Undo/Redo State History
   const [undoStack, setUndoStack] = useState<string[]>([]);
@@ -525,6 +542,200 @@ export default function App() {
     );
   };
 
+  // ────────────────── precision 3D RULER POINTER INTERACTION ENGINE ──────────────────
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !rulerActive) return;
+
+    let dragStartPos = { x: 0, y: 0 };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      dragStartPos = { x: e.clientX, y: e.clientY };
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      // Check if it was a quick static click instead of a drag operation
+      const diffX = Math.abs(e.clientX - dragStartPos.x);
+      const diffY = Math.abs(e.clientY - dragStartPos.y);
+      if (diffX > 5 || diffY > 5) return; // Ignore drag operations
+
+      if (!cameraRef.current) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), cameraRef.current);
+
+      // Intersect with high fidelity solid meshes first
+      const targets = Object.values(meshesRef.current) as THREE.Object3D[];
+      const intersects = raycaster.intersectObjects(targets, true);
+
+      // Mesh or Ground Plane intersection fallback
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const planeIntersection = new THREE.Vector3();
+      const intersectOnPlane = raycaster.ray.intersectPlane(plane, planeIntersection);
+
+      let clickedPt: THREE.Vector3 | null = null;
+      if (intersects.length > 0) {
+        clickedPt = intersects[0].point;
+      } else if (intersectOnPlane) {
+        clickedPt = planeIntersection.clone();
+      }
+
+      if (clickedPt) {
+        const ptTuple: [number, number, number] = [
+          parseFloat(clickedPt.x.toFixed(2)),
+          parseFloat(clickedPt.y.toFixed(2)),
+          parseFloat(clickedPt.z.toFixed(2))
+        ];
+
+        setRulerPoints((prev) => {
+          if (prev.length === 0) {
+            return [ptTuple];
+          } else if (prev.length === 1) {
+            return [prev[0], ptTuple];
+          } else {
+            return [ptTuple]; // Start a fresh dimension measurement
+          }
+        });
+        setRulerHoverPoint(null);
+      }
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (rulerPoints.length !== 1 || !cameraRef.current) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), cameraRef.current);
+
+      const targets = Object.values(meshesRef.current) as THREE.Object3D[];
+      const intersects = raycaster.intersectObjects(targets, true);
+
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const planeIntersection = new THREE.Vector3();
+      const intersectOnPlane = raycaster.ray.intersectPlane(plane, planeIntersection);
+
+      let hoverPt: THREE.Vector3 | null = null;
+      if (intersects.length > 0) {
+        hoverPt = intersects[0].point;
+      } else if (intersectOnPlane) {
+        hoverPt = planeIntersection.clone();
+      }
+
+      if (hoverPt) {
+        setRulerHoverPoint([
+          parseFloat(hoverPt.x.toFixed(2)),
+          parseFloat(hoverPt.y.toFixed(2)),
+          parseFloat(hoverPt.z.toFixed(2))
+        ]);
+      }
+    };
+
+    canvas.addEventListener('pointerdown', handlePointerDown);
+    canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointermove', handlePointerMove);
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown);
+      canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointermove', handlePointerMove);
+    };
+  }, [rulerActive, rulerPoints]);
+
+  // ────────────────── precision 3D RULER MECHANICAL RENDER SYNCHRONIZER ──────────────────
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    // Remove legacy group lines if any
+    const existing = scene.getObjectByName('ruler-visual-group');
+    if (existing) {
+      scene.remove(existing);
+      existing.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        } else if (child instanceof THREE.Line) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+    }
+
+    if (!rulerActive || rulerPoints.length === 0) return;
+
+    const group = new THREE.Group();
+    group.name = 'ruler-visual-group';
+
+    // Highlight anchor points using miniature shiny red/green spheres (stands out in light and dark mode)
+    const sphereGeo = new THREE.SphereGeometry(1.2, 16, 16);
+    const sphereMatA = new THREE.MeshBasicMaterial({ color: 0xf43f5e, depthTest: false, transparent: true, opacity: 0.95 });
+    const sphereMatB = new THREE.MeshBasicMaterial({ color: 0x10b981, depthTest: false, transparent: true, opacity: 0.95 });
+
+    const ptA = rulerPoints[0];
+    const meshA = new THREE.Mesh(sphereGeo, sphereMatA);
+    meshA.position.set(ptA[0], ptA[1], ptA[2]);
+    meshA.renderOrder = 1000;
+    group.add(meshA);
+
+    let endPt: [number, number, number] | null = null;
+    let isHoverMode = false;
+
+    if (rulerPoints.length >= 2) {
+      endPt = rulerPoints[1];
+    } else if (rulerHoverPoint) {
+      endPt = rulerHoverPoint;
+      isHoverMode = true;
+    }
+
+    if (endPt) {
+      const meshB = new THREE.Mesh(sphereGeo, isHoverMode ? sphereMatA : sphereMatB);
+      meshB.position.set(endPt[0], endPt[1], endPt[2]);
+      meshB.renderOrder = 1000;
+      group.add(meshB);
+
+      // Connecting line geometry
+      const points = [
+        new THREE.Vector3(ptA[0], ptA[1], ptA[2]),
+        new THREE.Vector3(endPt[0], endPt[1], endPt[2])
+      ];
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: isHoverMode ? 0xf43f5e : 0x10b981,
+        linewidth: 3,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.9
+      });
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.renderOrder = 999;
+      group.add(line);
+    }
+
+    scene.add(group);
+
+    return () => {
+      scene.remove(group);
+      sphereGeo.dispose();
+      sphereMatA.dispose();
+      sphereMatB.dispose();
+    };
+  }, [rulerActive, rulerPoints, rulerHoverPoint]);
+
   // ────────────────── INITIALIZE THREE.JS RUNTIME ENVIRONMENT ──────────────────
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
@@ -891,7 +1102,7 @@ export default function App() {
           className="flex-1 h-full relative overflow-hidden bg-gradient-to-b from-slate-950/20 via-slate-950/10 to-transparent"
         >
           {/* Canvas */}
-          <canvas id="three-canvas" ref={canvasRef} className="w-full h-full block touch-none" />
+          <canvas id="three-canvas" ref={canvasRef} className={`w-full h-full block touch-none ${rulerActive ? 'cursor-crosshair' : 'cursor-default'}`} />
 
           {/* Interactive 2D Drawing Board overlay */}
           {sketchMode && activeFace && (
@@ -902,6 +1113,18 @@ export default function App() {
               projectPoint={projectPoint}
               showGridSetting={showGridSetting}
               onUpdateValue={handleUpdateValue}
+            />
+          )}
+
+          {/* Dynamic 2D Precision Ruler HUD Measure Overlay */}
+          {rulerActive && (
+            <RulerHUD
+              rulerPoints={rulerPoints}
+              rulerHoverPoint={rulerHoverPoint}
+              rulerActive={rulerActive}
+              projectPoint={projectPoint}
+              setRulerActive={setRulerActive}
+              clearRuler={clearRuler}
             />
           )}
 
@@ -930,6 +1153,27 @@ export default function App() {
               </div>
             ) : (
               <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRulerActive((prev) => !prev);
+                    if (!rulerActive) {
+                      onSelectSolid(null); // Detach transform controls on selection
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 font-bold text-[11px] px-2.5 py-1.5 rounded transition cursor-pointer select-none ${
+                    rulerActive
+                      ? 'bg-emerald-500 text-slate-950 font-black shadow-inner shadow-emerald-400/20 hover:bg-emerald-450'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-750'
+                  }`}
+                  title="Measure actual 3D distance between two points on components or grid"
+                >
+                  <Ruler className="h-3.5 w-3.5" />
+                  <span>{rulerActive ? 'Ruler Active' : '3D Ruler'}</span>
+                </button>
+
+                <div className="h-4 w-px bg-slate-800" />
+
                 <BoxIcon className="h-4 w-4 text-indigo-400" />
                 <span className="font-bold text-slate-200">
                   {selectedSolidId ? `Selected: ${solids.find((s) => s.id === selectedSolidId)?.name}` : 'No Part Selected'}
