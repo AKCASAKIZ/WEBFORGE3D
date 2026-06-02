@@ -1,0 +1,6 @@
+{
+  "name": "WebForge3D CAD Studio",
+  "description": "Interactive 3D Solid Modeler and 2D Face Sketching Studio with precise parametric dimensioning, custom materials, and live measurements.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
