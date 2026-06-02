@@ -88,26 +88,70 @@ export default function App() {
   const targetCamPosRef = useRef<THREE.Vector3 | null>(null);
   const targetCamLookAtRef = useRef<THREE.Vector3 | null>(null);
 
+  // Safe helper to strip circular references (prevent "Converting circular structure to JSON" errors)
+  const safeStringify = (obj: any): string => {
+    const cache = new Set();
+    return JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (cache.has(value)) {
+          return undefined; // Strips the circular referencing element completely
+        }
+        cache.add(value);
+        
+        // Skip common WebGL/Canvas references if they crop up in any context
+        if (
+          value instanceof HTMLElement ||
+          value instanceof HTMLCanvasElement ||
+          (value.constructor && value.constructor.name === 'HTMLCanvasElement') ||
+          (typeof value.isMesh === 'boolean' && value.isMesh) ||
+          (typeof value.isObject3D === 'boolean' && value.isObject3D) ||
+          (typeof value.isScene === 'boolean' && value.isScene)
+        ) {
+          return undefined;
+        }
+      }
+      return value;
+    });
+  };
+
   // Record a checkpoint for Undo/Redo
   const saveCheckpoint = (currentSolids: CADSolid[]) => {
-    setUndoStack((prev) => [...prev, JSON.stringify(currentSolids)]);
-    setRedoStack([]); // Clear redo stack on new action
+    try {
+      const serialized = safeStringify(currentSolids);
+      // Run updates after standard rendering tick to prevent dispatching state updates inside another dispatch
+      setTimeout(() => {
+        setUndoStack((prev) => [...prev, serialized]);
+        setRedoStack([]); // Clear redo stack on new action
+      }, 0);
+    } catch (err) {
+      console.error('Failed to save checkpoint:', err);
+    }
   };
 
   const handleUndo = () => {
     if (undoStack.length === 0) return;
     const previous = undoStack[undoStack.length - 1];
     setUndoStack((prev) => prev.slice(0, -1));
-    setRedoStack((prev) => [...prev, JSON.stringify(solids)]);
-    setSolids(JSON.parse(previous));
+    const currentSolidsStr = safeStringify(solids);
+    setRedoStack((prev) => [...prev, currentSolidsStr]);
+    try {
+      setSolids(JSON.parse(previous));
+    } catch (e) {
+      console.error('Failed to parse undone CAD solids:', e);
+    }
   };
 
   const handleRedo = () => {
     if (redoStack.length === 0) return;
     const next = redoStack[redoStack.length - 1];
     setRedoStack((prev) => prev.slice(0, -1));
-    setUndoStack((prev) => [...prev, JSON.stringify(solids)]);
-    setSolids(JSON.parse(next));
+    const currentSolidsStr = safeStringify(solids);
+    setUndoStack((prev) => [...prev, currentSolidsStr]);
+    try {
+      setSolids(JSON.parse(next));
+    } catch (e) {
+      console.error('Failed to parse redone CAD solids:', e);
+    }
   };
 
   // Clear scene back to a structural plate
@@ -121,7 +165,7 @@ export default function App() {
 
   // Export JSON locally (Durable client persistence option)
   const handleSaveScene = () => {
-    const dataStr = JSON.stringify({ projectName, solids });
+    const dataStr = safeStringify({ projectName, solids });
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
