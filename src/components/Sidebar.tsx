@@ -13,7 +13,9 @@ import {
   Info,
   Sliders,
   Type,
-  PenTool
+  PenTool,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { 
   CADSolid, 
@@ -26,7 +28,8 @@ import {
   CylinderParams, 
   SphereParams, 
   ConeParams, 
-  SketchParams 
+  SketchParams,
+  DimensionConstraint
 } from '../types';
 
 interface SidebarProps {
@@ -61,6 +64,7 @@ interface SidebarProps {
   onChangeSolidParams: (id: string, p: SolidParams) => void;
   onChangeSolidPosition: (id: string, pos: [number, number, number]) => void;
   onChangeSolidRotation: (id: string, rot: [number, number, number]) => void;
+  onChangeSolidConstraints?: (id: string, paramKey: string, constraint: DimensionConstraint) => void;
   
   // Stats
   totalVolume: number;
@@ -91,16 +95,175 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onChangeSolidParams,
   onChangeSolidPosition,
   onChangeSolidRotation,
+  onChangeSolidConstraints,
   totalVolume,
   totalMass,
 }) => {
   const selectedSolid = solids.find((s) => s.id === selectedSolidId);
+
+  const [expandedConstraints, setExpandedConstraints] = React.useState<Record<string, boolean>>({});
+
+  const toggleConstraintConfig = (paramKey: string, isDefaultEnabled: boolean = false) => {
+    setExpandedConstraints((prev) => {
+      const alreadyOpen = prev[paramKey];
+      // On toggle first open, if the constraint wasn't already configured in the solid,
+      // we can prepopulate standard min/max values based on current parameter value
+      if (!alreadyOpen && selectedSolid && onChangeSolidConstraints && (!selectedSolid.constraints || !selectedSolid.constraints[paramKey])) {
+        const val = (selectedSolid.params as any)[paramKey] || 25;
+        onChangeSolidConstraints(selectedSolid.id, paramKey, {
+          min: Math.max(1, Math.round(val * 0.4)),
+          max: Math.round(val * 2.5),
+          enabled: false
+        });
+      }
+      return {
+        ...prev,
+        [paramKey]: !alreadyOpen,
+      };
+    });
+  };
+
+  const getConstraint = (paramKey: string, defaultMin: number = 2, defaultMax: number = 200) => {
+    if (selectedSolid && selectedSolid.constraints && selectedSolid.constraints[paramKey]) {
+      return selectedSolid.constraints[paramKey];
+    }
+    if (selectedSolid) {
+      const val = (selectedSolid.params as any)[paramKey] || 25;
+      return {
+        min: Math.max(1, Math.round(val * 0.5)),
+        max: Math.round(val * 2),
+        enabled: false
+      };
+    }
+    return { min: defaultMin, max: defaultMax, enabled: false };
+  };
+
+  const handleUpdateConstraint = (paramKey: string, updated: DimensionConstraint) => {
+    if (selectedSolid && onChangeSolidConstraints) {
+      onChangeSolidConstraints(selectedSolid.id, paramKey, updated);
+    }
+  };
 
   // Quick preset sizes
   const handleAddNewBox = () => onAddSolid('box');
   const handleAddNewCylinder = () => onAddSolid('cylinder');
   const handleAddNewSphere = () => onAddSolid('sphere');
   const handleAddNewCone = () => onAddSolid('cone');
+
+  const renderDimensionSlider = (
+    label: string,
+    paramKey: string,
+    currentValue: number,
+    minSliderVal: number,
+    maxSliderVal: number,
+    step: number,
+    onValueChange: (val: number) => void
+  ) => {
+    const constraint = getConstraint(paramKey, minSliderVal, maxSliderVal);
+    const isLocked = constraint.enabled;
+    const isExpanded = !!expandedConstraints[paramKey];
+
+    const effectiveMin = isLocked ? constraint.min : minSliderVal;
+    const effectiveMax = isLocked ? constraint.max : maxSliderVal;
+
+    return (
+      <div className="space-y-1 bg-slate-900/40 p-2 rounded border border-slate-900/40 mb-2.5">
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-slate-400 font-semibold">{label}</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => toggleConstraintConfig(paramKey)}
+              className={`p-1 rounded cursor-pointer transition flex items-center gap-0.5 ${
+                isLocked 
+                  ? 'text-amber-400 bg-amber-950/50 hover:bg-amber-900/50 border border-amber-800/30' 
+                  : 'text-slate-500 hover:text-slate-350 hover:bg-slate-800/50 border border-transparent'
+              }`}
+              title={isLocked ? "Constraints are set. Click to configuration parameters." : "No constraints set. Click to configure bounds limit."}
+            >
+              {isLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+              <span className="text-[9px] font-mono leading-none">{isLocked ? 'Locked' : ''}</span>
+            </button>
+            <span className="font-mono font-bold text-slate-200">{currentValue} mm</span>
+          </div>
+        </div>
+
+        <input
+          type="range"
+          min={effectiveMin}
+          max={effectiveMax}
+          step={step}
+          value={currentValue}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            onValueChange(val);
+          }}
+          className={`w-full cursor-ew-resize ${isLocked ? 'accent-amber-500 text-amber-500' : 'accent-indigo-500'}`}
+        />
+
+        {isExpanded && (
+          <div className="mt-1.5 pt-1.5 border-t border-slate-900/60 space-y-2 text-[10px] text-slate-300">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-400">Dim-Lock Limit Lock:</span>
+              <label className="flex items-center gap-1 cursor-pointer select-none font-bold text-[10px]">
+                <input
+                  type="checkbox"
+                  checked={isLocked}
+                  onChange={(e) => {
+                    handleUpdateConstraint(paramKey, {
+                      ...constraint,
+                      enabled: e.target.checked
+                    });
+                  }}
+                  className="accent-amber-500 rounded cursor-pointer h-3 w-3"
+                />
+                <span className={isLocked ? 'text-amber-400' : 'text-slate-400'}>
+                  {isLocked ? 'Locked' : 'Unlocked'}
+                </span>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-slate-500 text-[9px] font-bold uppercase">Min (mm)</span>
+                <input
+                  type="number"
+                  value={constraint.min}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      handleUpdateConstraint(paramKey, {
+                        ...constraint,
+                        min: val
+                      });
+                    }
+                  }}
+                  className="bg-slate-950 border border-slate-800 text-slate-200 text-center font-mono rounded p-1 text-[10px] outline-none focus:border-indigo-600"
+                />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-slate-500 text-[9px] font-bold uppercase">Max (mm)</span>
+                <input
+                  type="number"
+                  value={constraint.max}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      handleUpdateConstraint(paramKey, {
+                        ...constraint,
+                        max: val
+                      });
+                    }
+                  }}
+                  className="bg-slate-950 border border-slate-800 text-slate-200 text-center font-mono rounded p-1 text-[10px] outline-none focus:border-indigo-600"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <aside className="w-80 border-l bg-slate-950 border-slate-900 text-slate-100 shrink-0 flex flex-col h-full z-10 select-none overflow-y-auto">
@@ -596,194 +759,138 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <Sliders className="h-3.5 w-3.5" />
               <span>Modify Solid Dimensions</span>
-            </div>
-
-            {selectedSolid.type === 'box' && (
+            </div>            {selectedSolid.type === 'box' && (
               <>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Width (X)</span>
-                    <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as BoxParams).width} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="150"
-                    step="1"
-                    value={(selectedSolid.params as BoxParams).width}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      onChangeSolidParams(selectedSolid.id, {
-                        ...(selectedSolid.params as BoxParams),
-                        width: val,
-                      });
-                    }}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
+                {renderDimensionSlider(
+                  "Width (X)",
+                  "width",
+                  (selectedSolid.params as BoxParams).width,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as BoxParams),
+                      width: val,
+                    });
+                  }
+                )}
 
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Height (Y)</span>
-                    <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as BoxParams).height} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="2"
-                    max="150"
-                    step="1"
-                    value={(selectedSolid.params as BoxParams).height}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      onChangeSolidParams(selectedSolid.id, {
-                        ...(selectedSolid.params as BoxParams),
-                        height: val,
-                      });
-                    }}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
+                {renderDimensionSlider(
+                  "Height (Y)",
+                  "height",
+                  (selectedSolid.params as BoxParams).height,
+                  2,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as BoxParams),
+                      height: val,
+                    });
+                  }
+                )}
 
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Depth (Z)</span>
-                    <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as BoxParams).depth} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="150"
-                    step="1"
-                    value={(selectedSolid.params as BoxParams).depth}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      onChangeSolidParams(selectedSolid.id, {
-                        ...(selectedSolid.params as BoxParams),
-                        depth: val,
-                      });
-                    }}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
+                {renderDimensionSlider(
+                  "Depth (Z)",
+                  "depth",
+                  (selectedSolid.params as BoxParams).depth,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as BoxParams),
+                      depth: val,
+                    });
+                  }
+                )}
               </>
             )}
 
             {selectedSolid.type === 'cylinder' && (
               <>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Radius</span>
-                    <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as CylinderParams).radius} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="80"
-                    step="1"
-                    value={(selectedSolid.params as CylinderParams).radius}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      onChangeSolidParams(selectedSolid.id, {
-                        ...(selectedSolid.params as CylinderParams),
-                        radius: val,
-                      });
-                    }}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
+                {renderDimensionSlider(
+                  "Radius",
+                  "radius",
+                  (selectedSolid.params as CylinderParams).radius,
+                  5,
+                  80,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as CylinderParams),
+                      radius: val,
+                    });
+                  }
+                )}
 
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Height</span>
-                    <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as CylinderParams).height} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="150"
-                    step="1"
-                    value={(selectedSolid.params as CylinderParams).height}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      onChangeSolidParams(selectedSolid.id, {
-                        ...(selectedSolid.params as CylinderParams),
-                        height: val,
-                      });
-                    }}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
+                {renderDimensionSlider(
+                  "Height",
+                  "height",
+                  (selectedSolid.params as CylinderParams).height,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as CylinderParams),
+                      height: val,
+                    });
+                  }
+                )}
               </>
             )}
 
             {selectedSolid.type === 'sphere' && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Radius</span>
-                  <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as SphereParams).radius} mm</span>
-                </div>
-                <input
-                  type="range"
-                  min="5"
-                  max="100"
-                  step="1"
-                  value={(selectedSolid.params as SphereParams).radius}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
+              <>
+                {renderDimensionSlider(
+                  "Radius",
+                  "radius",
+                  (selectedSolid.params as SphereParams).radius,
+                  5,
+                  100,
+                  1,
+                  (val) => {
                     onChangeSolidParams(selectedSolid.id, {
                       radius: val,
                     });
-                  }}
-                  className="w-full accent-indigo-500"
-                />
-              </div>
+                  }
+                )}
+              </>
             )}
 
             {selectedSolid.type === 'cone' && (
               <>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Radius</span>
-                    <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as ConeParams).radius} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="80"
-                    step="1"
-                    value={(selectedSolid.params as ConeParams).radius}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      onChangeSolidParams(selectedSolid.id, {
-                        ...(selectedSolid.params as ConeParams),
-                        radius: val,
-                      });
-                    }}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
+                {renderDimensionSlider(
+                  "Radius",
+                  "radius",
+                  (selectedSolid.params as ConeParams).radius,
+                  5,
+                  80,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as ConeParams),
+                      radius: val,
+                    });
+                  }
+                )}
 
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Height</span>
-                    <span className="font-mono font-bold text-slate-200">{(selectedSolid.params as ConeParams).height} mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="150"
-                    step="1"
-                    value={(selectedSolid.params as ConeParams).height}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      onChangeSolidParams(selectedSolid.id, {
-                        ...(selectedSolid.params as ConeParams),
-                        height: val,
-                      });
-                    }}
-                    className="w-full accent-indigo-500"
-                  />
-                </div>
+                {renderDimensionSlider(
+                  "Height",
+                  "height",
+                  (selectedSolid.params as ConeParams).height,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as ConeParams),
+                      height: val,
+                    });
+                  }
+                )}
               </>
             )}
 
