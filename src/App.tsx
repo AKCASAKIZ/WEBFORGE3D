@@ -12,6 +12,7 @@ import {
   CylinderParams, 
   SphereParams, 
   ConeParams, 
+  TorusParams,
   SketchParams,
   MATERIAL_SPECS,
   DimensionConstraint
@@ -69,6 +70,11 @@ export default function App() {
   // But keep it toggleable for premium grading!
   const [showGridSetting, setShowGridSetting] = useState<boolean>(false);
 
+  // Snapping Settings
+  const [snapToGrid, setSnapToGrid] = useState<boolean>(true);
+  const [snapSize, setSnapSize] = useState<number>(5);
+  const [snapAngle, setSnapAngle] = useState<number>(15);
+
   // Precision 3D Ruler States
   const [rulerActive, setRulerActive] = useState<boolean>(false);
   const [rulerPoints, setRulerPoints] = useState<[number, number, number][]>([]);
@@ -84,6 +90,20 @@ export default function App() {
       clearRuler();
     }
   }, [rulerActive]);
+
+  // Synchronize TransformControls translationSnap / rotationSnap parameters
+  useEffect(() => {
+    const tc = transformControlsRef.current;
+    if (tc) {
+      if (snapToGrid) {
+        tc.translationSnap = snapSize;
+        tc.rotationSnap = (snapAngle * Math.PI) / 180;
+      } else {
+        tc.translationSnap = null;
+        tc.rotationSnap = null;
+      }
+    }
+  }, [snapToGrid, snapSize, snapAngle, selectedSolidId, sketchMode]);
 
   // Undo/Redo State History
   const [undoStack, setUndoStack] = useState<string[]>([]);
@@ -217,7 +237,7 @@ export default function App() {
   };
 
   // Add 3D primitives
-  const handleAddSolid = (type: 'box' | 'cylinder' | 'sphere' | 'cone') => {
+  const handleAddSolid = (type: 'box' | 'cylinder' | 'sphere' | 'cone' | 'torus') => {
     saveCheckpoint(solids);
     
     // Position slightly offset from center to cluster neatly
@@ -241,6 +261,10 @@ export default function App() {
       case 'cone':
         params = { radius: 15, height: 35 };
         color = '#9b59b6';
+        break;
+      case 'torus':
+        params = { radius: 20, tube: 6 };
+        color = '#e67e22';
         break;
     }
 
@@ -440,9 +464,13 @@ export default function App() {
 
   // Update dynamic sketch parameters
   const handleUpdateValue = (field: 'width' | 'height' | 'radius' | 'u' | 'v', value: number) => {
+    let finalValue = value;
+    if (snapToGrid && (field === 'u' || field === 'v')) {
+      finalValue = Math.round(value / snapSize) * snapSize;
+    }
     setSketchProfile((prev) => ({
       ...prev,
-      [field]: value,
+      [field]: finalValue,
     }));
   };
 
@@ -585,10 +613,20 @@ export default function App() {
       }
 
       if (clickedPt) {
+        let xVal = clickedPt.x;
+        let yVal = clickedPt.y;
+        let zVal = clickedPt.z;
+
+        if (snapToGrid) {
+          xVal = Math.round(xVal / snapSize) * snapSize;
+          yVal = Math.round(yVal / snapSize) * snapSize;
+          zVal = Math.round(zVal / snapSize) * snapSize;
+        }
+
         const ptTuple: [number, number, number] = [
-          parseFloat(clickedPt.x.toFixed(2)),
-          parseFloat(clickedPt.y.toFixed(2)),
-          parseFloat(clickedPt.z.toFixed(2))
+          parseFloat(xVal.toFixed(2)),
+          parseFloat(yVal.toFixed(2)),
+          parseFloat(zVal.toFixed(2))
         ];
 
         setRulerPoints((prev) => {
@@ -629,10 +667,20 @@ export default function App() {
       }
 
       if (hoverPt) {
+        let xVal = hoverPt.x;
+        let yVal = hoverPt.y;
+        let zVal = hoverPt.z;
+
+        if (snapToGrid) {
+          xVal = Math.round(xVal / snapSize) * snapSize;
+          yVal = Math.round(yVal / snapSize) * snapSize;
+          zVal = Math.round(zVal / snapSize) * snapSize;
+        }
+
         setRulerHoverPoint([
-          parseFloat(hoverPt.x.toFixed(2)),
-          parseFloat(hoverPt.y.toFixed(2)),
-          parseFloat(hoverPt.z.toFixed(2))
+          parseFloat(xVal.toFixed(2)),
+          parseFloat(yVal.toFixed(2)),
+          parseFloat(zVal.toFixed(2))
         ]);
       }
     };
@@ -922,6 +970,10 @@ export default function App() {
       } else if (solid.type === 'cone') {
         const p = solid.params as ConeParams;
         geometry = new THREE.ConeGeometry(p.radius, p.height, 32);
+      } else if (solid.type === 'torus') {
+        const p = solid.params as TorusParams;
+        geometry = new THREE.TorusGeometry(p.radius, p.tube, 16, 100);
+        geometry.rotateX(Math.PI / 2); // align flat
       } else {
         // Sketched boss extrusions or pocket cutouts representation
         const p = solid.params as SketchParams;
@@ -1241,6 +1293,12 @@ export default function App() {
           onChangeSolidConstraints={handleChangeSolidConstraints}
           totalVolume={totalVolume}
           totalMass={totalMass}
+          snapToGrid={snapToGrid}
+          setSnapToGrid={setSnapToGrid}
+          snapSize={snapSize}
+          setSnapSize={setSnapSize}
+          snapAngle={snapAngle}
+          setSnapAngle={setSnapAngle}
         />
       </div>
 
