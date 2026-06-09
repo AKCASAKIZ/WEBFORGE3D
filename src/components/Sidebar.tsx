@@ -79,6 +79,7 @@ interface SidebarProps {
   setSnapSize?: (val: number) => void;
   snapAngle?: number;
   setSnapAngle?: (val: number) => void;
+  setSolids?: React.Dispatch<React.SetStateAction<CADSolid[]>>;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -114,6 +115,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setSnapSize,
   snapAngle = 15,
   setSnapAngle,
+  setSolids,
 }) => {
   const selectedSolid = solids.find((s) => s.id === selectedSolidId);
 
@@ -278,6 +280,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
         )}
+      </div>
+    );
+  };
+
+  const handleUpdateFilletOrChamfer = (type: 'fillet' | 'chamfer', val: number) => {
+    if (!selectedSolidId || !selectedSolid || !selectedSolid.selectedEdgeId) return;
+    const edgeId = selectedSolid.selectedEdgeId;
+    
+    const currentFillets = { ...(selectedSolid.fillets || {}) };
+    const currentChamfers = { ...(selectedSolid.chamfers || {}) };
+
+    if (type === 'fillet') {
+      currentFillets[edgeId] = val;
+      delete currentChamfers[edgeId];
+    } else {
+      currentChamfers[edgeId] = val;
+      delete currentFillets[edgeId];
+    }
+
+    if (setSolids) {
+      setSolids((prev) =>
+        prev.map((s) =>
+          s.id === selectedSolidId ? { ...s, fillets: currentFillets, chamfers: currentChamfers } : s
+        )
+      );
+    }
+  };
+
+  const handleResetEdge = () => {
+    if (!selectedSolidId || !selectedSolid || !selectedSolid.selectedEdgeId) return;
+    const edgeId = selectedSolid.selectedEdgeId;
+    
+    const currentFillets = { ...(selectedSolid.fillets || {}) };
+    const currentChamfers = { ...(selectedSolid.chamfers || {}) };
+
+    delete currentFillets[edgeId];
+    delete currentChamfers[edgeId];
+
+    if (setSolids) {
+      setSolids((prev) =>
+        prev.map((s) =>
+          s.id === selectedSolidId ? { ...s, fillets: currentFillets, chamfers: currentChamfers } : s
+        )
+      );
+    }
+  };
+
+  const renderEdgeModifierSlider = (
+    label: string,
+    edgeId: string,
+    currentValue: number,
+    minVal: number,
+    maxVal: number,
+    step: number,
+    onValueChange: (val: number) => void
+  ) => {
+    return (
+      <div className="space-y-1 bg-slate-900/60 p-2.5 rounded border border-slate-800 mb-2">
+        <div className="flex justify-between items-center text-[10px]">
+          <span className="text-slate-450 font-semibold text-slate-300">{label}</span>
+          <span className="font-mono font-bold text-pink-400">{currentValue} mm</span>
+        </div>
+        <input
+          type="range"
+          min={minVal}
+          max={maxVal}
+          step={step}
+          value={currentValue}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            onValueChange(val);
+          }}
+          className="w-full cursor-ew-resize accent-pink-500"
+        />
       </div>
     );
   };
@@ -506,6 +582,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       depth: val,
                     });
                   }
+                )}
+              </div>
+            )}
+
+            {(selectedSolid.type === 'box' || selectedSolid.type === 'cylinder') && (
+              <div className="mt-3.5 pt-3.5 border-t border-indigo-900/40 space-y-3">
+                <div className="text-[10px] font-black uppercase text-indigo-300 tracking-wider">
+                  Kenar Yuvarlama & Pah / Fillet & Chamfer
+                </div>
+                
+                {!selectedSolid.selectedEdgeId ? (
+                  <div className="p-3 bg-slate-900/40 rounded border border-dashed border-indigo-500/10 text-center text-slate-400 text-[11px] leading-relaxed">
+                    Sahnede <span className="text-pink-400 font-bold font-mono animate-pulse">pembe kenarlardan</span> birini seçerek anında <strong className="text-slate-200">Fillet</strong> veya <strong className="text-slate-200">Chamfer</strong> uygulayabilirsiniz.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between bg-slate-950/80 p-1.5 rounded border border-slate-800/80 text-[10px]">
+                      <span className="text-slate-400 font-bold uppercase">Seçili Kenar:</span>
+                      <span className="font-mono font-bold text-pink-400 bg-pink-950/20 px-1.5 py-0.5 rounded border border-pink-950/30 uppercase">
+                        {selectedSolid.selectedEdgeId.replace('vertical-', 'Dikey ').replace('top-', 'Üst ').replace('bottom-', 'Alt ').replace('rim', 'Halkası')}
+                      </span>
+                    </div>
+
+                    {renderEdgeModifierSlider(
+                      "Fillet Yarıçapı / Fillet Radius (mm)",
+                      selectedSolid.selectedEdgeId,
+                      (selectedSolid.fillets?.[selectedSolid.selectedEdgeId] || 0),
+                      0,
+                      15,
+                      0.5,
+                      (val) => handleUpdateFilletOrChamfer('fillet', val)
+                    )}
+
+                    {renderEdgeModifierSlider(
+                      "Pah Genişliği / Chamfer Distance (mm)",
+                      selectedSolid.selectedEdgeId,
+                      (selectedSolid.chamfers?.[selectedSolid.selectedEdgeId] || 0),
+                      0,
+                      15,
+                      0.5,
+                      (val) => handleUpdateFilletOrChamfer('chamfer', val)
+                    )}
+
+                    <button
+                      onClick={handleResetEdge}
+                      type="button"
+                      className="w-full bg-slate-900/80 hover:bg-slate-850 text-slate-400 hover:text-red-400 border border-slate-800 rounded p-1.5 text-[10px] uppercase font-black tracking-wider transition cursor-pointer"
+                    >
+                      Kenarı Sıfırla / Reset Edge
+                    </button>
+                  </div>
                 )}
               </div>
             )}
