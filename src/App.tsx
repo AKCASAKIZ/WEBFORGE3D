@@ -17,7 +17,7 @@ import {
   MATERIAL_SPECS,
   DimensionConstraint
 } from './types';
-import { getFaceCoordinates, calculateTotalVolume, calculateTotalMass } from './utils';
+import { getFaceCoordinates, calculateTotalVolume, calculateTotalMass, createModifiedBoxGeometry, createModifiedCylinderGeometry } from './utils';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DrawingBoardOverlay } from './components/DrawingBoardOverlay';
@@ -126,30 +126,63 @@ export default function App() {
   const targetCamPosRef = useRef<THREE.Vector3 | null>(null);
   const targetCamLookAtRef = useRef<THREE.Vector3 | null>(null);
 
-  // Safe helper to strip circular references (prevent "Converting circular structure to JSON" errors)
+  // Safe helper to strip non-serializable objects and copy pure primitives/plain objects
   const safeStringify = (obj: any): string => {
-    const cache = new Set();
-    return JSON.stringify(obj, (key, value) => {
-      if (typeof value === 'object' && value !== null) {
-        if (cache.has(value)) {
-          return undefined; // Strips the circular referencing element completely
+    const deepClean = (val: any, visited = new Set<any>()): any => {
+      if (val === null || val === undefined) return val;
+      const t = typeof val;
+      if (t === 'string' || t === 'number' || t === 'boolean') {
+        return val;
+      }
+      if (t !== 'object') {
+        return undefined;
+      }
+      if (visited.has(val)) {
+        return undefined;
+      }
+      visited.add(val);
+
+      if (Array.isArray(val)) {
+        const arr: any[] = [];
+        for (const item of val) {
+          const cleaned = deepClean(item, visited);
+          if (cleaned !== undefined) {
+            arr.push(cleaned);
+          }
         }
-        cache.add(value);
-        
-        // Skip common WebGL/Canvas references if they crop up in any context
-        if (
-          value instanceof HTMLElement ||
-          value instanceof HTMLCanvasElement ||
-          (value.constructor && value.constructor.name === 'HTMLCanvasElement') ||
-          (typeof value.isMesh === 'boolean' && value.isMesh) ||
-          (typeof value.isObject3D === 'boolean' && value.isObject3D) ||
-          (typeof value.isScene === 'boolean' && value.isScene)
-        ) {
+        visited.delete(val);
+        return arr;
+      }
+
+      // Plain Object check
+      try {
+        const proto = Object.getPrototypeOf(val);
+        if (proto !== Object.prototype && proto !== null) {
+          visited.delete(val);
           return undefined;
         }
+      } catch (e) {
+        visited.delete(val);
+        return undefined;
       }
-      return value;
-    });
+
+      const cleanedObj: Record<string, any> = {};
+      for (const key of Object.keys(val)) {
+        const cleanedValue = deepClean(val[key], visited);
+        if (cleanedValue !== undefined) {
+          cleanedObj[key] = cleanedValue;
+        }
+      }
+      visited.delete(val);
+      return cleanedObj;
+    };
+
+    try {
+      const pureObj = deepClean(obj);
+      return JSON.stringify(pureObj);
+    } catch (err) {
+      return '[]';
+    }
   };
 
   // Record a checkpoint for Undo/Redo
@@ -960,10 +993,10 @@ export default function App() {
       // 1. Build geometry
       if (solid.type === 'box') {
         const p = solid.params as BoxParams;
-        geometry = new THREE.BoxGeometry(p.width, p.height, p.depth);
+        geometry = createModifiedBoxGeometry(p.width, p.height, p.depth, solid.fillets, solid.chamfers);
       } else if (solid.type === 'cylinder') {
         const p = solid.params as CylinderParams;
-        geometry = new THREE.CylinderGeometry(p.radius, p.radius, p.height, 32);
+        geometry = createModifiedCylinderGeometry(p.radius, p.height, solid.fillets, solid.chamfers);
       } else if (solid.type === 'sphere') {
         const p = solid.params as SphereParams;
         geometry = new THREE.SphereGeometry(p.radius, 32, 24);
@@ -1114,6 +1147,239 @@ export default function App() {
       material.dispose();
     };
   }, [sketchMode, activeFace, sketchProfile]);
+
+  // ────────────────── CLICK-TO-SELECT SOLID OR EDGE ON THE 3D CANVAS ──────────────────
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || rulerActive || sketchMode) return;
+
+    let dragStartPos = { x: 0, y: 0 };
+    let clickTime = 0;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      dragStartPos = { x: e.clientX, y: e.clientY };
+      clickTime = Date.now();
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      const diffX = Math.abs(e.clientX - dragStartPos.x);
+      const diffY = Math.abs(e.clientY - dragStartPos.y);
+      const duration = Date.now() - clickTime;
+      if (diffX > 5 || diffY > 5 || duration > 300) return;
+
+      const tc = transformControlsRef.current;
+      if (tc && tc.dragging) return;
+
+      if (!cameraRef.current) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), cameraRef.current);
+
+      // 1. Try selecting interactive edge helper meshes first
+      const edgeGroup = sceneRef.current?.getObjectByName('edge-selection-helpers');
+      if (edgeGroup) {
+        const edgeTargets: THREE.Object3D[] = [];
+        edgeGroup.traverse((child) => {
+          if ((child as any).isMesh) {
+            edgeTargets.push(child);
+          }
+        });
+        const edgeIntersects = raycaster.intersectObjects(edgeTargets, true);
+        if (edgeIntersects.length > 0) {
+          const clickedEdgeHelper = edgeIntersects[0].object;
+          const edgeId = clickedEdgeHelper.name;
+          if (selectedSolidId) {
+            setSolids((prev) =>
+              prev.map((s) => (s.id === selectedSolidId ? { ...s, selectedEdgeId: edgeId } : s))
+            );
+          }
+          return;
+        }
+      }
+
+      // 2. Select raw solid meshes
+      const targets = Object.values(meshesRef.current) as THREE.Object3D[];
+      const intersects = raycaster.intersectObjects(targets, true);
+
+      if (intersects.length > 0) {
+        const clickedMesh = intersects[0].object;
+        let pObj: THREE.Object3D | null = clickedMesh;
+        let solidId = '';
+        while (pObj) {
+          if (pObj.name && meshesRef.current[pObj.name]) {
+            solidId = pObj.name;
+            break;
+          }
+          pObj = pObj.parent;
+        }
+        if (!solidId) {
+          solidId = clickedMesh.name;
+        }
+        if (solidId && meshesRef.current[solidId]) {
+          setSelectedSolidId(solidId);
+          setSolids((prev) =>
+            prev.map((s) => (s.id === solidId ? { ...s, selectedEdgeId: null } : s))
+          );
+        }
+      } else {
+        // Did not click any solid or edge
+        if (selectedSolidId) {
+          setSolids((prev) =>
+            prev.map((s) => (s.id === selectedSolidId ? { ...s, selectedEdgeId: null } : s))
+          );
+        }
+      }
+    };
+
+    canvas.addEventListener('pointerdown', handlePointerDown);
+    canvas.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown);
+      canvas.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [selectedSolidId, rulerActive, sketchMode, solids]);
+
+  // ────────────────── EDGE SELECTION HIGHLIGHT AND CAD HELPERS ──────────────────
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    const oldGroup = scene.getObjectByName('edge-selection-helpers');
+    if (oldGroup) {
+      scene.remove(oldGroup);
+      oldGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+    }
+
+    if (!selectedSolidId || sketchMode) return;
+
+    const solid = solids.find((s) => s.id === selectedSolidId);
+    if (!solid || (solid.type !== 'box' && solid.type !== 'cylinder')) return;
+
+    const edgeGroup = new THREE.Group();
+    edgeGroup.name = 'edge-selection-helpers';
+
+    edgeGroup.position.set(solid.position[0], solid.position[1], solid.position[2]);
+    edgeGroup.rotation.set(solid.rotation[0], solid.rotation[1], solid.rotation[2]);
+    edgeGroup.scale.set(solid.scale[0], solid.scale[1], solid.scale[2]);
+
+    const activeEdgeId = solid.selectedEdgeId;
+    const helperRadius = 0.55;
+
+    const edgeColorNormal = '#3b82f6';
+    const edgeColorActive = '#ec4899'; // High contrast hot pink for active edge
+
+    const createMaterial = (isCurrent: boolean) => {
+      return new THREE.MeshBasicMaterial({
+        color: isCurrent ? edgeColorActive : edgeColorNormal,
+        transparent: true,
+        opacity: isCurrent ? 0.95 : 0.45,
+        depthTest: false,
+      });
+    };
+
+    if (solid.type === 'box') {
+      const p = solid.params as BoxParams;
+      const w = p.width;
+      const h = p.height;
+      const d = p.depth;
+      const hw = w / 2;
+      const hh = h / 2;
+      const hd = d / 2;
+
+      const vEdges = [
+        { id: 'vertical-FL', x: -hw, z: hd },
+        { id: 'vertical-FR', x: hw, z: hd },
+        { id: 'vertical-BL', x: -hw, z: -hd },
+        { id: 'vertical-BR', x: hw, z: -hd },
+      ];
+
+      vEdges.forEach((v) => {
+        const geo = new THREE.CylinderGeometry(helperRadius, helperRadius, h, 8);
+        const mat = createMaterial(activeEdgeId === v.id);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.name = v.id;
+        mesh.position.set(v.x, 0, v.z);
+        edgeGroup.add(mesh);
+      });
+
+      const xEdges = [
+        { id: 'top-F', y: hh, z: hd },
+        { id: 'top-B', y: hh, z: -hd },
+        { id: 'bottom-F', y: -hh, z: hd },
+        { id: 'bottom-B', y: -hh, z: -hd },
+      ];
+
+      xEdges.forEach((e) => {
+        const geo = new THREE.CylinderGeometry(helperRadius, helperRadius, w, 8);
+        geo.rotateZ(Math.PI / 2);
+        const mat = createMaterial(activeEdgeId === e.id);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.name = e.id;
+        mesh.position.set(0, e.y, e.z);
+        edgeGroup.add(mesh);
+      });
+
+      const zEdges = [
+        { id: 'top-L', x: -hw, y: hh },
+        { id: 'top-R', x: hw, y: hh },
+        { id: 'bottom-L', x: -hw, y: -hh },
+        { id: 'bottom-R', x: hw, y: -hh },
+      ];
+
+      zEdges.forEach((e) => {
+        const geo = new THREE.CylinderGeometry(helperRadius, helperRadius, d, 8);
+        geo.rotateX(Math.PI / 2);
+        const mat = createMaterial(activeEdgeId === e.id);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.name = e.id;
+        mesh.position.set(e.x, e.y, 0);
+        edgeGroup.add(mesh);
+      });
+    } else if (solid.type === 'cylinder') {
+      const p = solid.params as CylinderParams;
+      const hr = p.radius;
+      const h = p.height;
+      const hh = h / 2;
+
+      const rims = [
+        { id: 'top-rim', y: hh },
+        { id: 'bottom-rim', y: -hh },
+      ];
+
+      rims.forEach((rim) => {
+        const geo = new THREE.TorusGeometry(hr, helperRadius, 8, 36);
+        geo.rotateX(Math.PI / 2);
+        const mat = createMaterial(activeEdgeId === rim.id);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.name = rim.id;
+        mesh.position.set(0, rim.y, 0);
+        edgeGroup.add(mesh);
+      });
+    }
+
+    scene.add(edgeGroup);
+
+    return () => {
+      const cleanupGroup = scene.getObjectByName('edge-selection-helpers');
+      if (cleanupGroup) {
+        scene.remove(cleanupGroup);
+      }
+    };
+  }, [selectedSolidId, solids, sketchMode]);
 
   // Project a 3D vector to 2D screen coordinate using active camera and canvas rect
   const projectPoint = React.useCallback((vec: THREE.Vector3): { x: number; y: number } => {
@@ -1299,6 +1565,7 @@ export default function App() {
           setSnapSize={setSnapSize}
           snapAngle={snapAngle}
           setSnapAngle={setSnapAngle}
+          setSolids={setSolids}
         />
       </div>
 
