@@ -1,4 +1,4 @@
-export type SolidType = 'box' | 'cylinder' | 'sphere' | 'cone' | 'extruded_sketch' | 'subtracted_sketch';
+export type SolidType = 'box' | 'cylinder' | 'sphere' | 'cone' | 'extruded_sketch' | 'subtracted_sketch' | 'torus';
 
 export interface BoxParams {
   width: number;
@@ -20,6 +20,11 @@ export interface ConeParams {
   height: number;
 }
 
+export interface TorusParams {
+  radius: number; // Major/outer radius
+  tube: number;   // Minor/tube radius
+}
+
 export interface SketchParams {
   profileType: 'rect' | 'circle' | 'polygon';
   width: number;
@@ -33,7 +38,7 @@ export interface SketchParams {
   parentSolidId: string;
 }
 
-export type SolidParams = BoxParams | CylinderParams | SphereParams | ConeParams | SketchParams;
+export type SolidParams = BoxParams | CylinderParams | SphereParams | ConeParams | TorusParams | SketchParams;
 
 export type MaterialType = 'steel' | 'aluminum' | 'plastic' | 'copper' | 'wood' | 'glass';
 
