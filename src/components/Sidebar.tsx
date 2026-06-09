@@ -591,10 +591,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="text-[10px] font-black uppercase text-indigo-300 tracking-wider">
                   Kenar Yuvarlama & Pah / Fillet & Chamfer
                 </div>
+
+                <div className="space-y-1 bg-slate-900/40 p-2 rounded border border-slate-900/60">
+                  <label className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider block">Kenar Seçin / Choose Edge</label>
+                  <select
+                    value={selectedSolid.selectedEdgeId || ''}
+                    onChange={(e) => {
+                      const val = e.target.value || null;
+                      if (setSolids) {
+                        setSolids((prev) =>
+                          prev.map((s) => (s.id === selectedSolidId ? { ...s, selectedEdgeId: val } : s))
+                        );
+                      }
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 hover:border-slate-705 text-slate-200 text-xs p-1.5 rounded outline-none cursor-pointer focus:border-indigo-500 font-semibold"
+                  >
+                    <option value="">-- Kenar Seçin / Select Edge --</option>
+                    {selectedSolid.type === 'box' ? (
+                      <>
+                        <option value="vertical-FL">Dikey Sol-Ön / Vertical Front-Left</option>
+                        <option value="vertical-FR">Dikey Sağ-Ön / Vertical Front-Right</option>
+                        <option value="vertical-BL">Dikey Sol-Arka / Vertical Back-Left</option>
+                        <option value="vertical-BR">Dikey Sağ-Arka / Vertical Back-Right</option>
+                        <option value="top-F">Üst Ön / Top Front</option>
+                        <option value="top-B">Üst Arka / Top Back</option>
+                        <option value="bottom-F">Alt Ön / Bottom Front</option>
+                        <option value="bottom-B">Alt Arka / Bottom Back</option>
+                        <option value="top-L">Üst Sol / Top Left</option>
+                        <option value="top-R">Üst Sağ / Top Right</option>
+                        <option value="bottom-L">Alt Sol / Bottom Left</option>
+                        <option value="bottom-R">Alt Sağ / Bottom Right</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="top-rim">Üst Çevre Halkası / Top Rim</option>
+                        <option value="bottom-rim">Alt Çevre Halkası / Bottom Rim</option>
+                      </>
+                    )}
+                  </select>
+                </div>
                 
                 {!selectedSolid.selectedEdgeId ? (
                   <div className="p-3 bg-slate-900/40 rounded border border-dashed border-indigo-500/10 text-center text-slate-400 text-[11px] leading-relaxed">
-                    Sahnede <span className="text-pink-400 font-bold font-mono animate-pulse">pembe kenarlardan</span> birini seçerek anında <strong className="text-slate-200">Fillet</strong> veya <strong className="text-slate-200">Chamfer</strong> uygulayabilirsiniz.
+                    Yukarıdaki listeden bir kenar seçebilir veya sahnede <span className="text-pink-400 font-bold font-mono animate-pulse">pembe çizgilerden</span> birine tıklayarak anında <strong className="text-slate-200">Fillet</strong> veya <strong className="text-slate-200">Chamfer</strong> uygulayabilirsiniz.
                   </div>
                 ) : (
                   <div className="space-y-3">
