@@ -22,7 +22,7 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DrawingBoardOverlay } from './components/DrawingBoardOverlay';
 import { RulerHUD } from './components/RulerHUD';
-import { Plus, Check, Play, Settings, Compass, Sliders, Box as BoxIcon, Eye, Ruler } from 'lucide-react';
+import { Plus, Check, Play, Settings, Compass, Sliders, Box as BoxIcon, Eye, Ruler, Move, RotateCw, Scale } from 'lucide-react';
 
 const INITIAL_SOLIDS: CADSolid[] = [
   {
@@ -44,6 +44,7 @@ export default function App() {
   const [selectedSolidId, setSelectedSolidId] = useState<string | null>('base-cube');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showTutorial, setShowTutorial] = useState<boolean>(true);
+  const [gizmoMode, setGizmoMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
 
   const onSelectSolid = (id: string | null) => setSelectedSolidId(id);
 
@@ -881,6 +882,7 @@ export default function App() {
                 ...s,
                 position: [obj.position.x, obj.position.y, obj.position.z] as [number, number, number],
                 rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z] as [number, number, number],
+                scale: [obj.scale.x, obj.scale.y, obj.scale.z] as [number, number, number],
               };
             }
             return s;
@@ -1055,13 +1057,14 @@ export default function App() {
     if (tc) {
       if (selectedSolidId && !sketchMode && meshesRef.current[selectedSolidId]) {
         tc.attach(meshesRef.current[selectedSolidId]);
+        tc.setMode(gizmoMode);
         tc.visible = true;
       } else {
         tc.detach();
         tc.visible = false;
       }
     }
-  }, [solids, selectedSolidId, sketchMode]);
+  }, [solids, selectedSolidId, sketchMode, gizmoMode]);
 
   // Sketch Overlay helper visualization directly into the 3D scene (Cyan profile preview)
   useEffect(() => {
@@ -1220,18 +1223,16 @@ export default function App() {
           solidId = clickedMesh.name;
         }
         if (solidId && meshesRef.current[solidId]) {
-          setSelectedSolidId(solidId);
-          setSolids((prev) =>
-            prev.map((s) => (s.id === solidId ? { ...s, selectedEdgeId: null } : s))
-          );
+          if (solidId !== selectedSolidId) {
+            setSelectedSolidId(solidId);
+            setSolids((prev) =>
+              prev.map((s) => (s.id === solidId ? { ...s, selectedEdgeId: null } : s))
+            );
+          }
         }
       } else {
-        // Did not click any solid or edge
-        if (selectedSolidId) {
-          setSolids((prev) =>
-            prev.map((s) => (s.id === selectedSolidId ? { ...s, selectedEdgeId: null } : s))
-          );
-        }
+        // Did not click any solid or edge -> Deselect active solid
+        setSelectedSolidId(null);
       }
     };
 
@@ -1277,7 +1278,7 @@ export default function App() {
     edgeGroup.scale.set(solid.scale[0], solid.scale[1], solid.scale[2]);
 
     const activeEdgeId = solid.selectedEdgeId;
-    const helperRadius = 0.55;
+    const helperRadius = 2.2;
 
     const edgeColorNormal = '#3b82f6';
     const edgeColorActive = '#ec4899'; // High contrast hot pink for active edge
@@ -1489,6 +1490,34 @@ export default function App() {
                   <Ruler className="h-3.5 w-3.5" />
                   <span>{rulerActive ? 'Ruler Active' : '3D Ruler'}</span>
                 </button>
+
+                <div className="h-4 w-px bg-slate-800" />
+
+                {/* 3D Gizmo transform mode switcher */}
+                <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 gap-0.5" title="Araç seçin: Taşı, Döndür veya Ölçeklendir / Select tool: Move, Rotate, or Scale">
+                  {(['translate', 'rotate', 'scale'] as const).map((mode) => {
+                    const label = mode === 'translate' ? 'Taşı / Move' : mode === 'rotate' ? 'Döndür / Rotate' : 'Boyut / Scale';
+                    const iconClass = "h-3.5 w-3.5";
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setGizmoMode(mode)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-extrabold transition-all cursor-pointer ${
+                          gizmoMode === mode
+                            ? 'bg-indigo-600 text-white font-black shadow-inner shadow-indigo-500/20'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                        }`}
+                        title={label}
+                      >
+                        {mode === 'translate' && <Move className={iconClass} />}
+                        {mode === 'rotate' && <RotateCw className={iconClass} />}
+                        {mode === 'scale' && <Scale className={iconClass} />}
+                        <span>{mode === 'translate' ? 'Move' : mode === 'rotate' ? 'Rotate' : 'Scale'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
                 <div className="h-4 w-px bg-slate-800" />
 
