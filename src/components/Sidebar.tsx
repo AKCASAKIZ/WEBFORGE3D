@@ -15,7 +15,8 @@ import {
   Type,
   PenTool,
   Lock,
-  Unlock
+  Unlock,
+  Magnet
 } from 'lucide-react';
 import { 
   CADSolid, 
@@ -28,6 +29,7 @@ import {
   CylinderParams, 
   SphereParams, 
   ConeParams, 
+  TorusParams,
   SketchParams,
   DimensionConstraint
 } from '../types';
@@ -41,7 +43,7 @@ interface SidebarProps {
   onFocusSolid: (id: string) => void;
   
   // Creation helpers
-  onAddSolid: (type: 'box' | 'cylinder' | 'sphere' | 'cone') => void;
+  onAddSolid: (type: 'box' | 'cylinder' | 'sphere' | 'cone' | 'torus') => void;
   
   // active sketch settings (only shown when sketching)
   sketchMode: boolean;
@@ -69,6 +71,14 @@ interface SidebarProps {
   // Stats
   totalVolume: number;
   totalMass: number;
+
+  // Snapping props (optional)
+  snapToGrid?: boolean;
+  setSnapToGrid?: (val: boolean) => void;
+  snapSize?: number;
+  setSnapSize?: (val: number) => void;
+  snapAngle?: number;
+  setSnapAngle?: (val: number) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -98,6 +108,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onChangeSolidConstraints,
   totalVolume,
   totalMass,
+  snapToGrid = true,
+  setSnapToGrid,
+  snapSize = 5,
+  setSnapSize,
+  snapAngle = 15,
+  setSnapAngle,
 }) => {
   const selectedSolid = solids.find((s) => s.id === selectedSolidId);
 
@@ -149,6 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleAddNewCylinder = () => onAddSolid('cylinder');
   const handleAddNewSphere = () => onAddSolid('sphere');
   const handleAddNewCone = () => onAddSolid('cone');
+  const handleAddNewTorus = () => onAddSolid('torus');
 
   const renderDimensionSlider = (
     label: string,
@@ -285,6 +302,64 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </section>
 
+      {/* SECTION 1.5: Precision Grid Snapping */}
+      <section className="p-4 border-b border-slate-900 bg-slate-950/40">
+        <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-350">
+          <div className="flex items-center gap-1.5">
+            <Magnet className="h-3.5 w-3.5 text-indigo-400" />
+            <span>Snap to Grid</span>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={snapToGrid}
+              onChange={(e) => setSnapToGrid?.(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-8 h-4 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-slate-400 after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+          </label>
+        </div>
+
+        {snapToGrid && (
+          <div className="space-y-2 mt-2 bg-slate-950 p-2.5 rounded border border-slate-900">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Grid Snaps</span>
+                <select
+                  value={snapSize}
+                  onChange={(e) => setSnapSize?.(parseFloat(e.target.value))}
+                  className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-[11px] p-1 rounded outline-none cursor-pointer focus:border-indigo-500 font-mono"
+                >
+                  <option value="1">1 mm</option>
+                  <option value="2">2 mm</option>
+                  <option value="5">5 mm</option>
+                  <option value="10">10 mm</option>
+                  <option value="25">25 mm</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Rot Snaps</span>
+                <select
+                  value={snapAngle}
+                  onChange={(e) => setSnapAngle?.(parseFloat(e.target.value))}
+                  className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-[11px] p-1 rounded outline-none cursor-pointer focus:border-indigo-500 font-mono"
+                >
+                  <option value="5">5°</option>
+                  <option value="15">15°</option>
+                  <option value="30">30°</option>
+                  <option value="45">45°</option>
+                  <option value="90">90°</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-[9px] text-slate-500 leading-normal">
+              Constrains standard 3D Gizmo movement and 2D Sketch offsets to increments of {snapSize}mm and {snapAngle}°.
+            </p>
+          </div>
+        )}
+      </section>
+
       {/* SECTION 2: CAD Model tree */}
       <section className="p-4 border-b border-slate-900 max-h-56 overflow-y-auto shrink-0">
         <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
@@ -315,6 +390,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               } else if (solid.type === 'cone') {
                 const p = solid.params as ConeParams;
                 subtitle = `Cone (R:${p.radius}, H:${p.height})`;
+              } else if (solid.type === 'torus') {
+                const p = solid.params as TorusParams;
+                subtitle = `Torus (R:${p.radius}, r:${p.tube})`;
               } else {
                 subtitle = 'Extruded Sketch';
               }
@@ -413,6 +491,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <Compass className="h-4 w-4 text-purple-400" />
               <span>Add Cone</span>
+            </button>
+
+            <button
+              onClick={handleAddNewTorus}
+              className="flex items-center justify-center gap-2 p-2 bg-slate-900 hover:bg-slate-850 rounded border border-slate-800 text-xs font-bold text-slate-200 cursor-pointer transition-all col-span-2"
+            >
+              <Circle className="h-3.5 w-3.5 text-amber-500 animate-pulse" style={{ borderRadius: '50%', borderWidth: '2px' }} />
+              <span>Add Donut (Torus)</span>
             </button>
           </div>
         </section>
@@ -587,11 +673,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="range"
                   min="-60"
                   max="60"
-                  step="0.5"
+                  step={snapToGrid ? snapSize : 0.5}
                   value={sketchProfile.u}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
-                    setSketchProfile((prev) => ({ ...prev, u: val }));
+                    const snappedVal = snapToGrid ? Math.round(val / snapSize) * snapSize : val;
+                    setSketchProfile((prev) => ({ ...prev, u: snappedVal }));
                   }}
                   className="w-full accent-cyan-500"
                 />
@@ -609,11 +696,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="range"
                   min="-60"
                   max="60"
-                  step="0.5"
+                  step={snapToGrid ? snapSize : 0.5}
                   value={sketchProfile.v}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
-                    setSketchProfile((prev) => ({ ...prev, v: val }));
+                    const snappedVal = snapToGrid ? Math.round(val / snapSize) * snapSize : val;
+                    setSketchProfile((prev) => ({ ...prev, v: snappedVal }));
                   }}
                   className="w-full accent-cyan-500"
                 />
@@ -888,6 +976,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onChangeSolidParams(selectedSolid.id, {
                       ...(selectedSolid.params as ConeParams),
                       height: val,
+                    });
+                  }
+                )}
+              </>
+            )}
+
+            {selectedSolid.type === 'torus' && (
+              <>
+                {renderDimensionSlider(
+                  "Major Radius (R)",
+                  "radius",
+                  (selectedSolid.params as TorusParams).radius,
+                  5,
+                  100,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as TorusParams),
+                      radius: val,
+                    });
+                  }
+                )}
+
+                {renderDimensionSlider(
+                  "Tube Radius (r)",
+                  "tube",
+                  (selectedSolid.params as TorusParams).tube,
+                  1,
+                  30,
+                  0.5,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as TorusParams),
+                      tube: val,
                     });
                   }
                 )}
