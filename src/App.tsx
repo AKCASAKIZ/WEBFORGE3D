@@ -1222,18 +1222,39 @@ export default function App() {
 
     tick();
 
-    // RESIZE EVENT HANDLER
+    // RESIZE OBSERVER WITH REPEATED RE-LAYOUT AND CONTAINER SYNC
     const handleResize = () => {
       if (!containerRef.current || !renderer || !camera) return;
-      camera.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+      const width = containerRef.current.clientWidth;
+      const height = containerRef.current.clientHeight;
+      if (width > 0 && height > 0) {
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
     };
+
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
     window.addEventListener('resize', handleResize);
+
+    // Trigger immediately and inside timeouts to prevent race conditions during DOM painting
+    handleResize();
+    const t1 = setTimeout(handleResize, 100);
+    const t2 = setTimeout(handleResize, 500);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
+      clearTimeout(t1);
+      clearTimeout(t2);
       renderer.dispose();
       transformControls.dispose();
     };
@@ -1719,6 +1740,7 @@ export default function App() {
               projectPoint={projectPoint}
               setRulerActive={setRulerActive}
               clearRuler={clearRuler}
+              activeSnapInfo={activeSnapInfo}
             />
           )}
 
