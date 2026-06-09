@@ -8,6 +8,7 @@ import {
   CylinderParams,
   SphereParams,
   ConeParams,
+  TorusParams,
   SketchParams
 } from './types';
 
@@ -117,6 +118,9 @@ export function calculateTotalVolume(solids: CADSolid[]): number {
     } else if (solid.type === 'cone') {
       const p = solid.params as ConeParams;
       mm3Volume += ((1 / 3) * Math.PI * Math.pow(p.radius, 2) * p.height) * scaleFactor;
+    } else if (solid.type === 'torus') {
+      const p = solid.params as TorusParams;
+      mm3Volume += (2 * Math.pow(Math.PI, 2) * p.radius * Math.pow(p.tube, 2)) * scaleFactor;
     } else if (solid.type === 'extruded_sketch') {
       const p = solid.params as SketchParams;
       const baseArea = p.profileType === 'rect' ? p.width * p.height :
@@ -158,6 +162,9 @@ export function calculateTotalMass(solids: CADSolid[]): number {
     } else if (solid.type === 'cone') {
       const p = solid.params as ConeParams;
       mm3Volume = ((1 / 3) * Math.PI * Math.pow(p.radius, 2) * p.height) * scaleFactor;
+    } else if (solid.type === 'torus') {
+      const p = solid.params as TorusParams;
+      mm3Volume = (2 * Math.pow(Math.PI, 2) * p.radius * Math.pow(p.tube, 2)) * scaleFactor;
     } else if (solid.type === 'extruded_sketch') {
       const p = solid.params as SketchParams;
       const baseArea = p.profileType === 'rect' ? p.width * p.height :
