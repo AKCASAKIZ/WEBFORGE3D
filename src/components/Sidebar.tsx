@@ -284,6 +284,235 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className="w-80 border-l bg-slate-950 border-slate-900 text-slate-100 shrink-0 flex flex-col h-full z-10 select-none overflow-y-auto">
+      {/* SECTION 0: Top-level Quick Dimension Editor (turkish: yapılan herhangi bir katı modele tıkladığımızda düzenleme çıksın sağmenünün en üstünde) */}
+      {!sketchMode && selectedSolid && (
+        <section className="p-4 bg-indigo-950/40 border-b border-indigo-900/60 space-y-3.5 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-black uppercase text-indigo-300 tracking-wider">
+              <Sliders className="h-4 w-4 text-emerald-400 animate-pulse" />
+              <span>Boyutları Düzenle / Quick Edit</span>
+            </div>
+            <span className="text-[9px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded font-mono uppercase font-black">
+              {selectedSolid.type}
+            </span>
+          </div>
+
+          <div className="p-2 bg-slate-900/40 rounded border border-indigo-500/10 text-xs font-semibold text-slate-300 flex items-center justify-between">
+            <span className="truncate pr-2 font-black">{selectedSolid.name}</span>
+            <span className="text-[9px] text-slate-500 font-mono shrink-0">ID: {selectedSolid.id.slice(0, 6)}</span>
+          </div>
+
+          <div className="space-y-1">
+            {selectedSolid.type === 'box' && (
+              <>
+                {renderDimensionSlider(
+                  "Genişlik / Width (X)",
+                  "width",
+                  (selectedSolid.params as BoxParams).width,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as BoxParams),
+                      width: val,
+                    });
+                  }
+                )}
+
+                {renderDimensionSlider(
+                  "Yükseklik / Height (Y)",
+                  "height",
+                  (selectedSolid.params as BoxParams).height,
+                  2,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as BoxParams),
+                      height: val,
+                    });
+                  }
+                )}
+
+                {renderDimensionSlider(
+                  "Derinlik / Depth (Z)",
+                  "depth",
+                  (selectedSolid.params as BoxParams).depth,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as BoxParams),
+                      depth: val,
+                    });
+                  }
+                )}
+              </>
+            )}
+
+            {selectedSolid.type === 'cylinder' && (
+              <>
+                {renderDimensionSlider(
+                  "Yarıçap / Radius",
+                  "radius",
+                  (selectedSolid.params as CylinderParams).radius,
+                  5,
+                  80,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as CylinderParams),
+                      radius: val,
+                    });
+                  }
+                )}
+
+                {renderDimensionSlider(
+                  "Yükseklik / Height",
+                  "height",
+                  (selectedSolid.params as CylinderParams).height,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as CylinderParams),
+                      height: val,
+                    });
+                  }
+                )}
+              </>
+            )}
+
+            {selectedSolid.type === 'sphere' && (
+              <>
+                {renderDimensionSlider(
+                  "Yarıçap / Radius",
+                  "radius",
+                  (selectedSolid.params as SphereParams).radius,
+                  5,
+                  100,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      radius: val,
+                    });
+                  }
+                )}
+              </>
+            )}
+
+            {selectedSolid.type === 'cone' && (
+              <>
+                {renderDimensionSlider(
+                  "Yarıçap / Radius",
+                  "radius",
+                  (selectedSolid.params as ConeParams).radius,
+                  5,
+                  80,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as ConeParams),
+                      radius: val,
+                    });
+                  }
+                )}
+
+                {renderDimensionSlider(
+                  "Yükseklik / Height",
+                  "height",
+                  (selectedSolid.params as ConeParams).height,
+                  10,
+                  150,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as ConeParams),
+                      height: val,
+                    });
+                  }
+                )}
+              </>
+            )}
+
+            {selectedSolid.type === 'torus' && (
+              <>
+                {renderDimensionSlider(
+                  "Dış Yarıçap / Major Radius (R)",
+                  "radius",
+                  (selectedSolid.params as TorusParams).radius,
+                  5,
+                  100,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as TorusParams),
+                      radius: val,
+                    });
+                  }
+                )}
+
+                {renderDimensionSlider(
+                  "Tüp Yarıçapı / Tube Radius (r)",
+                  "tube",
+                  (selectedSolid.params as TorusParams).tube,
+                  1,
+                  30,
+                  0.5,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as TorusParams),
+                      tube: val,
+                    });
+                  }
+                )}
+              </>
+            )}
+
+            {selectedSolid.type === 'extruded_sketch' && (
+              <div className="space-y-2">
+                {renderDimensionSlider(
+                  "Ekstrüzyon Kalınlığı / Extrude Depth",
+                  "depth",
+                  (selectedSolid.params as SketchParams).depth,
+                  2,
+                  120,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as SketchParams),
+                      depth: val,
+                    });
+                  }
+                )}
+              </div>
+            )}
+
+            {selectedSolid.type === 'subtracted_sketch' && (
+              <div className="space-y-2">
+                {renderDimensionSlider(
+                  "Kesim Derinliği / Cut Depth",
+                  "depth",
+                  (selectedSolid.params as SketchParams).depth,
+                  2,
+                  120,
+                  1,
+                  (val) => {
+                    onChangeSolidParams(selectedSolid.id, {
+                      ...(selectedSolid.params as SketchParams),
+                      depth: val,
+                    });
+                  }
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* SECTION 1: Stats & Overview */}
       <section className="p-4 border-b border-slate-900 bg-slate-900/30">
         <div className="flex items-center justify-between text-xs text-slate-400 font-bold uppercase tracking-wider mb-3">
