@@ -108,15 +108,8 @@ export default function App() {
     setMeasureData(null);
   };
 
-  useEffect(() => {
-    if (!rulerActive) {
-      clearRuler();
-      hideSnapMarker();
-    }
-  }, [rulerActive]);
-
   // SMART SNAP IMPLEMENTATION
-  const showSnapMarker = (pos: THREE.Vector3, type: 'vertex' | 'midpoint' | 'center' | 'grid') => {
+  function showSnapMarker(pos: THREE.Vector3, type: 'vertex' | 'midpoint' | 'center' | 'grid') {
     const scene = sceneRef.current;
     if (!scene) return;
     const marker = scene.getObjectByName('smart-snap-indicator');
@@ -132,9 +125,9 @@ export default function App() {
       type,
       point: [pos.x, pos.y, pos.z]
     });
-  };
+  }
 
-  const hideSnapMarker = () => {
+  function hideSnapMarker() {
     const scene = sceneRef.current;
     if (!scene) return;
     const marker = scene.getObjectByName('smart-snap-indicator');
@@ -146,7 +139,14 @@ export default function App() {
       type: null,
       point: null
     });
-  };
+  }
+
+  useEffect(() => {
+    if (!rulerActive) {
+      clearRuler();
+      hideSnapMarker();
+    }
+  }, [rulerActive]);
 
   const getSmartSnap = React.useCallback((rawPoint: THREE.Vector3): THREE.Vector3 => {
     let closestPoint: THREE.Vector3 | null = null;
