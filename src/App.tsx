@@ -76,6 +76,27 @@ export default function App() {
   const [snapSize, setSnapSize] = useState<number>(5);
   const [snapAngle, setSnapAngle] = useState<number>(15);
 
+  // Smart snapping context state
+  const [activeSnapInfo, setActiveSnapInfo] = useState<{
+    snapped: boolean;
+    type: 'vertex' | 'midpoint' | 'center' | 'grid' | null;
+    point: [number, number, number] | null;
+  }>({
+    snapped: false,
+    type: null,
+    point: null
+  });
+
+  // Safe measurement state to override window.updateMeasurePanelUI safely
+  const [measureData, setMeasureData] = useState<{
+    ptA: [number, number, number] | null;
+    ptB: [number, number, number] | null;
+    distance: number;
+    dx: number;
+    dy: number;
+    dz: number;
+  } | null>(null);
+
   // Precision 3D Ruler States
   const [rulerActive, setRulerActive] = useState<boolean>(false);
   const [rulerPoints, setRulerPoints] = useState<[number, number, number][]>([]);
@@ -84,13 +105,255 @@ export default function App() {
   const clearRuler = () => {
     setRulerPoints([]);
     setRulerHoverPoint(null);
+    setMeasureData(null);
   };
 
   useEffect(() => {
     if (!rulerActive) {
       clearRuler();
+      hideSnapMarker();
     }
   }, [rulerActive]);
+
+  // SMART SNAP IMPLEMENTATION
+  const showSnapMarker = (pos: THREE.Vector3, type: 'vertex' | 'midpoint' | 'center' | 'grid') => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const marker = scene.getObjectByName('smart-snap-indicator');
+    if (marker) {
+      marker.position.copy(pos);
+      marker.visible = true;
+      if (cameraRef.current) {
+        marker.quaternion.copy(cameraRef.current.quaternion);
+      }
+    }
+    setActiveSnapInfo({
+      snapped: true,
+      type,
+      point: [pos.x, pos.y, pos.z]
+    });
+  };
+
+  const hideSnapMarker = () => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const marker = scene.getObjectByName('smart-snap-indicator');
+    if (marker) {
+      marker.visible = false;
+    }
+    setActiveSnapInfo({
+      snapped: false,
+      type: null,
+      point: null
+    });
+  };
+
+  const getSmartSnap = React.useCallback((rawPoint: THREE.Vector3): THREE.Vector3 => {
+    let closestPoint: THREE.Vector3 | null = null;
+    let closestDist = Infinity;
+    let snapType: 'vertex' | 'midpoint' | 'center' | 'grid' | null = null;
+
+    const SOLID_SNAP_THRESHOLD = 8.0; 
+    const GRID_SNAP_THRESHOLD = 15.0; 
+
+    // Gather CAD solid features and points
+    solids.forEach((solid) => {
+      const pos = new THREE.Vector3(solid.position[0], solid.position[1], solid.position[2]);
+      const rot = new THREE.Euler(solid.rotation[0], solid.rotation[1], solid.rotation[2]);
+      const scl = new THREE.Vector3(solid.scale[0], solid.scale[1], solid.scale[2]);
+      const quat = new THREE.Quaternion().setFromEuler(rot);
+
+      // Model Center
+      let d = rawPoint.distanceTo(pos);
+      if (d < closestDist) {
+        closestDist = d;
+        closestPoint = pos.clone();
+        snapType = 'center';
+      }
+
+      // Vertices & Edge Midpoints
+      if (solid.type === 'box') {
+        const p = solid.params as BoxParams;
+        const hw = (p.width * scl.x) / 2;
+        const hh = (p.height * scl.y) / 2;
+        const hd = (p.depth * scl.z) / 2;
+
+        const corners: THREE.Vector3[] = [];
+        const signs = [
+          [-1, -1, -1], [-1, -1, 1], [-1, 1, -1], [-1, 1, 1],
+          [1, -1, -1], [1, -1, 1], [1, 1, -1], [1, 1, 1]
+        ];
+
+        signs.forEach(([sx, sy, sz]) => {
+          const cornerLocal = new THREE.Vector3(sx * hw, sy * hh, sz * hd);
+          const cornerWorld = cornerLocal.applyQuaternion(quat).add(pos);
+          corners.push(cornerWorld);
+
+          let distCorner = rawPoint.distanceTo(cornerWorld);
+          if (distCorner < closestDist) {
+            closestDist = distCorner;
+            closestPoint = cornerWorld.clone();
+            snapType = 'vertex';
+          }
+        });
+
+        // Midpoints
+        for (let i = 0; i < corners.length; i++) {
+          for (let j = i + 1; j < corners.length; j++) {
+            let matchCount = 0;
+            if (signs[i][0] === signs[j][0]) matchCount++;
+            if (signs[i][1] === signs[j][1]) matchCount++;
+            if (signs[i][2] === signs[j][2]) matchCount++;
+            if (matchCount === 2) {
+              const midpoint = new THREE.Vector3().addVectors(corners[i], corners[j]).multiplyScalar(0.5);
+              let distMid = rawPoint.distanceTo(midpoint);
+              if (distMid < closestDist) {
+                closestDist = distMid;
+                closestPoint = midpoint.clone();
+                snapType = 'midpoint';
+              }
+            }
+          }
+        }
+      } else if (solid.type === 'cylinder') {
+        const p = solid.params as CylinderParams;
+        const r = p.radius * scl.x;
+        const h = p.height * scl.y;
+        const hh = h / 2;
+
+        const topCenter = new THREE.Vector3(0, hh, 0).applyQuaternion(quat).add(pos);
+        const bottomCenter = new THREE.Vector3(0, -hh, 0).applyQuaternion(quat).add(pos);
+
+        let dTop = rawPoint.distanceTo(topCenter);
+        if (dTop < closestDist) {
+          closestDist = dTop;
+          closestPoint = topCenter.clone();
+          snapType = 'center';
+        }
+        let dBot = rawPoint.distanceTo(bottomCenter);
+        if (dBot < closestDist) {
+          closestDist = dBot;
+          closestPoint = bottomCenter.clone();
+          snapType = 'center';
+        }
+
+        const angles = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+        angles.forEach((phi) => {
+          const topRimPt = new THREE.Vector3(r * Math.cos(phi), hh, r * Math.sin(phi)).applyQuaternion(quat).add(pos);
+          const botRimPt = new THREE.Vector3(r * Math.cos(phi), -hh, r * Math.sin(phi)).applyQuaternion(quat).add(pos);
+
+          let dtR = rawPoint.distanceTo(topRimPt);
+          if (dtR < closestDist) {
+            closestDist = dtR;
+            closestPoint = topRimPt.clone();
+            snapType = 'vertex';
+          }
+          let dbR = rawPoint.distanceTo(botRimPt);
+          if (dbR < closestDist) {
+            closestDist = dbR;
+            closestPoint = botRimPt.clone();
+            snapType = 'vertex';
+          }
+        });
+      } else {
+        let dCenter = rawPoint.distanceTo(pos);
+        if (dCenter < closestDist) {
+          closestDist = dCenter;
+          closestPoint = pos.clone();
+          snapType = 'center';
+        }
+      }
+    });
+
+    if (closestPoint && closestDist < SOLID_SNAP_THRESHOLD) {
+      showSnapMarker(closestPoint, snapType || 'vertex');
+      return closestPoint.clone();
+    }
+
+    if (snapToGrid) {
+      const snappedGrid = new THREE.Vector3(
+        Math.round(rawPoint.x / snapSize) * snapSize,
+        Math.round(rawPoint.y / snapSize) * snapSize,
+        Math.round(rawPoint.z / snapSize) * snapSize
+      );
+
+      let dGrid = rawPoint.distanceTo(snappedGrid);
+      if (dGrid < GRID_SNAP_THRESHOLD) {
+        showSnapMarker(snappedGrid, 'grid');
+        return snappedGrid;
+      }
+    }
+
+    hideSnapMarker();
+    return rawPoint;
+  }, [solids, snapToGrid, snapSize]);
+
+  // Bind safe global functions to window scope to avoid any possible crash in parent environment
+  useEffect(() => {
+    (window as any).getSmartSnap = (pt: any) => {
+      if (!pt) return null;
+      if (Array.isArray(pt)) {
+        const v = new THREE.Vector3(pt[0], pt[1], pt[2]);
+        const res = getSmartSnap(v);
+        return [res.x, res.y, res.z];
+      } else if (pt instanceof THREE.Vector3) {
+        return getSmartSnap(pt);
+      } else if (typeof pt === 'object' && 'x' in pt) {
+        const v = new THREE.Vector3(pt.x, pt.y, pt.z);
+        const res = getSmartSnap(v);
+        return { x: res.x, y: res.y, z: res.z };
+      }
+      return pt;
+    };
+
+    (window as any).hideSnapMarker = () => {
+      hideSnapMarker();
+    };
+
+    (window as any).updateMeasurePanelUI = (pts?: any) => {
+      let list: any[] = [];
+      if (Array.isArray(pts)) {
+        list = pts;
+      } else if (rulerPoints && rulerPoints.length > 0) {
+        list = rulerPoints;
+      }
+
+      if (list.length >= 1) {
+        const ptA = list[0];
+        const ptB = list[1] || rulerHoverPoint || ptA;
+
+        const ax = (ptA && typeof ptA[0] === 'number') ? ptA[0] : 0;
+        const ay = (ptA && typeof ptA[1] === 'number') ? ptA[1] : 0;
+        const az = (ptA && typeof ptA[2] === 'number') ? ptA[2] : 0;
+
+        const bx = (ptB && typeof ptB[0] === 'number') ? ptB[0] : ax;
+        const by = (ptB && typeof ptB[1] === 'number') ? ptB[1] : ay;
+        const bz = (ptB && typeof ptB[2] === 'number') ? ptB[2] : az;
+
+        const dx = bx - ax;
+        const dy = by - ay;
+        const dz = bz - az;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        setMeasureData({
+          ptA: [ax, ay, az],
+          ptB: [bx, by, bz],
+          distance: dist,
+          dx,
+          dy,
+          dz
+        });
+      } else {
+        setMeasureData(null);
+      }
+    };
+
+    return () => {
+      delete (window as any).getSmartSnap;
+      delete (window as any).hideSnapMarker;
+      delete (window as any).updateMeasurePanelUI;
+    };
+  }, [getSmartSnap, rulerPoints, rulerHoverPoint]);
 
   // Synchronize TransformControls translationSnap / rotationSnap parameters
   useEffect(() => {
@@ -647,37 +910,26 @@ export default function App() {
       }
 
       if (clickedPt) {
-        let xVal = clickedPt.x;
-        let yVal = clickedPt.y;
-        let zVal = clickedPt.z;
-
-        if (snapToGrid) {
-          xVal = Math.round(xVal / snapSize) * snapSize;
-          yVal = Math.round(yVal / snapSize) * snapSize;
-          zVal = Math.round(zVal / snapSize) * snapSize;
-        }
-
+        const snapped = getSmartSnap(clickedPt);
         const ptTuple: [number, number, number] = [
-          parseFloat(xVal.toFixed(2)),
-          parseFloat(yVal.toFixed(2)),
-          parseFloat(zVal.toFixed(2))
+          parseFloat(snapped.x.toFixed(2)),
+          parseFloat(snapped.y.toFixed(2)),
+          parseFloat(snapped.z.toFixed(2))
         ];
 
         setRulerPoints((prev) => {
-          if (prev.length === 0) {
-            return [ptTuple];
-          } else if (prev.length === 1) {
-            return [prev[0], ptTuple];
-          } else {
-            return [ptTuple]; // Start a fresh dimension measurement
+          const nextPoints = prev.length < 2 ? [...prev, ptTuple] : [ptTuple];
+          if (typeof (window as any).updateMeasurePanelUI === 'function') {
+            (window as any).updateMeasurePanelUI(nextPoints);
           }
+          return nextPoints;
         });
         setRulerHoverPoint(null);
       }
     };
 
     const handlePointerMove = (e: PointerEvent) => {
-      if (rulerPoints.length !== 1 || !cameraRef.current) return;
+      if (!cameraRef.current) return;
 
       const rect = canvas.getBoundingClientRect();
       const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -701,21 +953,17 @@ export default function App() {
       }
 
       if (hoverPt) {
-        let xVal = hoverPt.x;
-        let yVal = hoverPt.y;
-        let zVal = hoverPt.z;
-
-        if (snapToGrid) {
-          xVal = Math.round(xVal / snapSize) * snapSize;
-          yVal = Math.round(yVal / snapSize) * snapSize;
-          zVal = Math.round(zVal / snapSize) * snapSize;
+        const snapped = getSmartSnap(hoverPt);
+        
+        if (rulerPoints.length === 1) {
+          setRulerHoverPoint([
+            parseFloat(snapped.x.toFixed(2)),
+            parseFloat(snapped.y.toFixed(2)),
+            parseFloat(snapped.z.toFixed(2))
+          ]);
         }
-
-        setRulerHoverPoint([
-          parseFloat(xVal.toFixed(2)),
-          parseFloat(yVal.toFixed(2)),
-          parseFloat(zVal.toFixed(2))
-        ]);
+      } else {
+        hideSnapMarker();
       }
     };
 
@@ -921,6 +1169,33 @@ export default function App() {
     const gridHelper = new THREE.GridHelper(500, 100, 0x475569, 0x1e293b);
     gridHelper.position.y = -0.1;
     scene.add(gridHelper);
+
+    // SMART SNAP INDICATOR CAD RETICLE MESH
+    const snapIndicatorGeo = new THREE.SphereGeometry(1.2, 16, 16);
+    const snapIndicatorMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981, 
+      depthTest: false,
+      transparent: true,
+      opacity: 0.95
+    });
+    const snapIndicatorMesh = new THREE.Mesh(snapIndicatorGeo, snapIndicatorMat);
+    snapIndicatorMesh.name = 'smart-snap-indicator';
+    snapIndicatorMesh.visible = false;
+
+    // Concentric CAD target ring
+    const snapOuterRingGeo = new THREE.RingGeometry(1.8, 2.4, 16);
+    const snapOuterRingMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.7
+    });
+    const snapOuterRingMesh = new THREE.Mesh(snapOuterRingGeo, snapOuterRingMat);
+    snapOuterRingMesh.name = 'smart-snap-outer-ring';
+    snapIndicatorMesh.add(snapOuterRingMesh);
+    
+    scene.add(snapIndicatorMesh);
 
     // RENDER LOOP WITH CAMERA LERP
     let animationFrameId: number;
