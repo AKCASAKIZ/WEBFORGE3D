@@ -77,6 +77,9 @@ export interface CADSolid {
   params: SolidParams;
   parentSolidId?: string; // used for feature tree history
   constraints?: Record<string, DimensionConstraint>;
+  fillets?: Record<string, number>;
+  chamfers?: Record<string, number>;
+  selectedEdgeId?: string | null;
 }
 
 export interface SketchProfile {
