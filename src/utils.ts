@@ -184,3 +184,475 @@ export function calculateTotalMass(solids: CADSolid[]): number {
   }
   return Math.max(0, totalMassG / 1000); // grams to kilograms
 }
+
+/**
+ * Procedurally rounded/chamfered box geometry generator shifts the base vertices
+ * of a high-subdivision box mathematically towards fillet or chamfer edges.
+ */
+export function createModifiedBoxGeometry(
+  width: number,
+  height: number,
+  depth: number,
+  fillets: Record<string, number> = {},
+  chamfers: Record<string, number> = {}
+): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(width, height, depth, 16, 16, 16);
+  const posAttr = geo.attributes.position;
+  if (!posAttr) return geo;
+
+  const hw = width / 2;
+  const hh = height / 2;
+  const hd = depth / 2;
+
+  const temp = new THREE.Vector3();
+
+  for (let i = 0; i < posAttr.count; i++) {
+    temp.fromBufferAttribute(posAttr, i);
+    let x = temp.x;
+    let y = temp.y;
+    let z = temp.z;
+
+    // --- 1. VERTICAL EDGES (parallel to Y, rounding in XZ plane) ---
+    // front-left (x < 0, z > 0)
+    if (fillets['vertical-FL'] || chamfers['vertical-FL']) {
+      const R = fillets['vertical-FL'] || 0;
+      const C = chamfers['vertical-FL'] || 0;
+      if (x < -hw + Math.max(R, C) && z > hd - Math.max(R, C)) {
+        if (R > 0) {
+          const cx = -hw + R;
+          const cz = hd - R;
+          const dx = x - cx;
+          const dz = z - cz;
+          const d = Math.sqrt(dx * dx + dz * dz);
+          if (d > R || (dx < 0 && dz > 0)) {
+            const angle = Math.atan2(dz, dx);
+            x = cx + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = -hw - x;
+          const v = z - hd;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            x += over;
+            z -= over;
+          }
+        }
+      }
+    }
+
+    // front-right (x > 0, z > 0)
+    if (fillets['vertical-FR'] || chamfers['vertical-FR']) {
+      const R = fillets['vertical-FR'] || 0;
+      const C = chamfers['vertical-FR'] || 0;
+      if (x > hw - Math.max(R, C) && z > hd - Math.max(R, C)) {
+        if (R > 0) {
+          const cx = hw - R;
+          const cz = hd - R;
+          const dx = x - cx;
+          const dz = z - cz;
+          const d = Math.sqrt(dx * dx + dz * dz);
+          if (d > R || (dx > 0 && dz > 0)) {
+            const angle = Math.atan2(dz, dx);
+            x = cx + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = x - hw;
+          const v = z - hd;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            x -= over;
+            z -= over;
+          }
+        }
+      }
+    }
+
+    // back-left (x < 0, z < 0)
+    if (fillets['vertical-BL'] || chamfers['vertical-BL']) {
+      const R = fillets['vertical-BL'] || 0;
+      const C = chamfers['vertical-BL'] || 0;
+      if (x < -hw + Math.max(R, C) && z < -hd + Math.max(R, C)) {
+        if (R > 0) {
+          const cx = -hw + R;
+          const cz = -hd + R;
+          const dx = x - cx;
+          const dz = z - cz;
+          const d = Math.sqrt(dx * dx + dz * dz);
+          if (d > R || (dx < 0 && dz < 0)) {
+            const angle = Math.atan2(dz, dx);
+            x = cx + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = -hw - x;
+          const v = -hd - z;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            x += over;
+            z += over;
+          }
+        }
+      }
+    }
+
+    // back-right (x > 0, z < 0)
+    if (fillets['vertical-BR'] || chamfers['vertical-BR']) {
+      const R = fillets['vertical-BR'] || 0;
+      const C = chamfers['vertical-BR'] || 0;
+      if (x > hw - Math.max(R, C) && z < -hd + Math.max(R, C)) {
+        if (R > 0) {
+          const cx = hw - R;
+          const cz = -hd + R;
+          const dx = x - cx;
+          const dz = z - cz;
+          const d = Math.sqrt(dx * dx + dz * dz);
+          if (d > R || (dx > 0 && dz < 0)) {
+            const angle = Math.atan2(dz, dx);
+            x = cx + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = x - hw;
+          const v = -hd - z;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            x -= over;
+            z += over;
+          }
+        }
+      }
+    }
+
+    // --- 2. HORIZONTAL EDGES ---
+    // Top-Front (y > 0, z > 0, parallel to X. Rounding in YZ plane)
+    if (fillets['top-F'] || chamfers['top-F']) {
+      const R = fillets['top-F'] || 0;
+      const C = chamfers['top-F'] || 0;
+      if (y > hh - Math.max(R, C) && z > hd - Math.max(R, C)) {
+        if (R > 0) {
+          const cy = hh - R;
+          const cz = hd - R;
+          const dy = y - cy;
+          const dz = z - cz;
+          const d = Math.sqrt(dy * dy + dz * dz);
+          if (d > R || (dy > 0 && dz > 0)) {
+            const angle = Math.atan2(dz, dy);
+            y = cy + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = y - hh;
+          const v = z - hd;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y -= over;
+            z -= over;
+          }
+        }
+      }
+    }
+
+    // Top-Back (y > 0, z < 0, parallel to X)
+    if (fillets['top-B'] || chamfers['top-B']) {
+      const R = fillets['top-B'] || 0;
+      const C = chamfers['top-B'] || 0;
+      if (y > hh - Math.max(R, C) && z < -hd + Math.max(R, C)) {
+        if (R > 0) {
+          const cy = hh - R;
+          const cz = -hd + R;
+          const dy = y - cy;
+          const dz = z - cz;
+          const d = Math.sqrt(dy * dy + dz * dz);
+          if (d > R || (dy > 0 && dz < 0)) {
+            const angle = Math.atan2(dz, dy);
+            y = cy + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = y - hh;
+          const v = -hd - z;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y -= over;
+            z += over;
+          }
+        }
+      }
+    }
+
+    // Top-Left (y > 0, x < 0, parallel to Z. Rounding in YX plane)
+    if (fillets['top-L'] || chamfers['top-L']) {
+      const R = fillets['top-L'] || 0;
+      const C = chamfers['top-L'] || 0;
+      if (y > hh - Math.max(R, C) && x < -hw + Math.max(R, C)) {
+        if (R > 0) {
+          const cy = hh - R;
+          const cx = -hw + R;
+          const dy = y - cy;
+          const dx = x - cx;
+          const d = Math.sqrt(dy * dy + dx * dx);
+          if (d > R || (dy > 0 && dx < 0)) {
+            const angle = Math.atan2(dx, dy);
+            y = cy + R * Math.cos(angle);
+            x = cx + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = y - hh;
+          const v = -hw - x;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y -= over;
+            x += over;
+          }
+        }
+      }
+    }
+
+    // Top-Right (y > 0, x > 0, parallel to Z)
+    if (fillets['top-R'] || chamfers['top-R']) {
+      const R = fillets['top-R'] || 0;
+      const C = chamfers['top-R'] || 0;
+      if (y > hh - Math.max(R, C) && x > hw - Math.max(R, C)) {
+        if (R > 0) {
+          const cy = hh - R;
+          const cx = hw - R;
+          const dy = y - cy;
+          const dx = x - cx;
+          const d = Math.sqrt(dy * dy + dx * dx);
+          if (d > R || (dy > 0 && dx > 0)) {
+            const angle = Math.atan2(dx, dy);
+            y = cy + R * Math.cos(angle);
+            x = cx + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = y - hh;
+          const v = x - hw;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y -= over;
+            x -= over;
+          }
+        }
+      }
+    }
+
+    // Bottom-Front (y < 0, z > 0, parallel to X)
+    if (fillets['bottom-F'] || chamfers['bottom-F']) {
+      const R = fillets['bottom-F'] || 0;
+      const C = chamfers['bottom-F'] || 0;
+      if (y < -hh + Math.max(R, C) && z > hd - Math.max(R, C)) {
+        if (R > 0) {
+          const cy = -hh + R;
+          const cz = hd - R;
+          const dy = y - cy;
+          const dz = z - cz;
+          const d = Math.sqrt(dy * dy + dz * dz);
+          if (d > R || (dy < 0 && dz > 0)) {
+            const angle = Math.atan2(dz, dy);
+            y = cy + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = -hh - y;
+          const v = z - hd;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y += over;
+            z -= over;
+          }
+        }
+      }
+    }
+
+    // Bottom-Back (y < 0, z < 0, parallel to X)
+    if (fillets['bottom-B'] || chamfers['bottom-B']) {
+      const R = fillets['bottom-B'] || 0;
+      const C = chamfers['bottom-B'] || 0;
+      if (y < -hh + Math.max(R, C) && z < -hd + Math.max(R, C)) {
+        if (R > 0) {
+          const cy = -hh + R;
+          const cz = -hd + R;
+          const dy = y - cy;
+          const dz = z - cz;
+          const d = Math.sqrt(dy * dy + dz * dz);
+          if (d > R || (dy < 0 && dz < 0)) {
+            const angle = Math.atan2(dz, dy);
+            y = cy + R * Math.cos(angle);
+            z = cz + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = -hh - y;
+          const v = -hd - z;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y += over;
+            z += over;
+          }
+        }
+      }
+    }
+
+    // Bottom-Left (y < 0, x < 0, parallel to Z)
+    if (fillets['bottom-L'] || chamfers['bottom-L']) {
+      const R = fillets['bottom-L'] || 0;
+      const C = chamfers['bottom-L'] || 0;
+      if (y < -hh + Math.max(R, C) && x < -hw + Math.max(R, C)) {
+        if (R > 0) {
+          const cy = -hh + R;
+          const cx = -hw + R;
+          const dy = y - cy;
+          const dx = x - cx;
+          const d = Math.sqrt(dy * dy + dx * dx);
+          if (d > R || (dy < 0 && dx < 0)) {
+            const angle = Math.atan2(dx, dy);
+            y = cy + R * Math.cos(angle);
+            x = cx + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = -hh - y;
+          const v = -hw - x;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y += over;
+            x += over;
+          }
+        }
+      }
+    }
+
+    // Bottom-Right (y < 0, x > 0, parallel to Z)
+    if (fillets['bottom-R'] || chamfers['bottom-R']) {
+      const R = fillets['bottom-R'] || 0;
+      const C = chamfers['bottom-R'] || 0;
+      if (y < -hh + Math.max(R, C) && x > hw - Math.max(R, C)) {
+        if (R > 0) {
+          const cy = -hh + R;
+          const cx = hw - R;
+          const dy = y - cy;
+          const dx = x - cx;
+          const d = Math.sqrt(dy * dy + dx * dx);
+          if (d > R || (dy < 0 && dx > 0)) {
+            const angle = Math.atan2(dx, dy);
+            y = cy + R * Math.cos(angle);
+            x = cx + R * Math.sin(angle);
+          }
+        } else if (C > 0) {
+          const u = -hh - y;
+          const v = x - hw;
+          if (u + v > C) {
+            const over = (u + v - C) / 2;
+            y += over;
+            x -= over;
+          }
+        }
+      }
+    }
+
+    posAttr.setXYZ(i, x, y, z);
+  }
+
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Procedurally updates cylinder vertices towards rounded top/bottom caps or beveled chamfer lines.
+ */
+export function createModifiedCylinderGeometry(
+  radius: number,
+  height: number,
+  fillets: Record<string, number> = {},
+  chamfers: Record<string, number> = {}
+): THREE.BufferGeometry {
+  const geo = new THREE.CylinderGeometry(radius, radius, height, 48, 16);
+  const posAttr = geo.attributes.position;
+  if (!posAttr) return geo;
+
+  const hh = height / 2;
+  const temp = new THREE.Vector3();
+
+  for (let i = 0; i < posAttr.count; i++) {
+    temp.fromBufferAttribute(posAttr, i);
+    let x = temp.x;
+    let y = temp.y;
+    let z = temp.z;
+    const r = Math.sqrt(x * x + z * z);
+
+    if (r > 0) {
+      // --- 1. TOP RIM ---
+      if (fillets['top-rim'] || chamfers['top-rim']) {
+        const R_f = fillets['top-rim'] || 0;
+        const C = chamfers['top-rim'] || 0;
+        const maxOffset = Math.max(R_f, C);
+
+        if (y > hh - maxOffset && r > radius - maxOffset) {
+          if (R_f > 0) {
+            const rc = radius - R_f;
+            const yc = hh - R_f;
+            const dr = r - rc;
+            const dy = y - yc;
+            if (dr > 0 && dy > 0) {
+              const angle = Math.atan2(dy, dr);
+              const rNew = rc + R_f * Math.cos(angle);
+              const yNew = yc + R_f * Math.sin(angle);
+              x = (x / r) * rNew;
+              z = (z / r) * rNew;
+              y = yNew;
+            }
+          } else if (C > 0) {
+            const dr = r - (radius - C);
+            const dy = y - (hh - C);
+            if (dr + dy > C) {
+              const over = (dr + dy - C) / 2;
+              const rNew = r - over;
+              x = (x / r) * rNew;
+              z = (z / r) * rNew;
+              y -= over;
+            }
+          }
+        }
+      }
+
+      // --- 2. BOTTOM RIM ---
+      if (fillets['bottom-rim'] || chamfers['bottom-rim']) {
+        const R_f = fillets['bottom-rim'] || 0;
+        const C = chamfers['bottom-rim'] || 0;
+        const maxOffset = Math.max(R_f, C);
+
+        if (y < -hh + maxOffset && r > radius - maxOffset) {
+          if (R_f > 0) {
+            const rc = radius - R_f;
+            const yc = -hh + R_f;
+            const dr = r - rc;
+            const dy = y - yc;
+            if (dr > 0 && dy < 0) {
+              const angle = Math.atan2(dy, dr);
+              const rNew = rc + R_f * Math.cos(angle);
+              const yNew = yc + R_f * Math.sin(angle);
+              x = (x / r) * rNew;
+              z = (z / r) * rNew;
+              y = yNew;
+            }
+          } else if (C > 0) {
+            const dr = r - (radius - C);
+            const dy = -hh - y;
+            if (dr + dy > C) {
+              const over = (dr + dy - C) / 2;
+              const rNew = r - over;
+              x = (x / r) * rNew;
+              z = (z / r) * rNew;
+              y += over;
+            }
+          }
+        }
+      }
+    }
+
+    posAttr.setXYZ(i, x, y, z);
+  }
+
+  geo.computeVertexNormals();
+  return geo;
+}
