@@ -664,8 +664,8 @@ i.fas, i.far {
 /* ── PANEL GLASS HOVER EFFECT ─────────────────────────── */
 #left-panel-container,
 #right-panel {
-    opacity: 0.08;
-    transition: opacity 0.2s ease;
+    opacity: 0.22;
+    transition: opacity 0.35s ease;
 }
 #left-panel-container:hover,
 #right-panel:hover,
@@ -699,7 +699,10 @@ body{background:var(--bg)!important;color:var(--txt)!important;}
 
 /* Panels */
 .panel,.bg-white\/95,.bg-white\/90,.bg-white{background:var(--panel)!important;border-color:var(--bdr)!important;color:var(--txt)!important;}
-#left-panel-container{background:var(--panel)!important;border-right:1px solid var(--bdr)!important;border-radius:0!important;top:56px!important;right:384px!important;left:auto!important;width:320px!important;}
+#left-panel-container{background:var(--panel)!important;border-right:1px solid var(--bdr)!important;border-radius:0 0 14px 0!important;top:56px!important;left:0!important;right:auto!important;width:252px!important;box-shadow:4px 0 18px rgba(0,0,0,0.35)!important;}
+#left-panel-container #left-panel-body{padding:10px!important;}
+#left-panel-container .btn-tool{font-size:10px!important;padding:5px 7px!important;}
+#left-panel-container input[type=number],#left-panel-container input[type=text],#left-panel-container select{font-size:11px!important;padding:3px 5px!important;}
 #right-panel{background:var(--panel)!important;border-left:1px solid var(--bdr)!important;border-radius:0!important;top:56px!important;}
 #properties-panel,#help-panel{background:var(--panel)!important;border-color:var(--bdr)!important;color:var(--txt)!important;top:60px!important;}
 #canvas-container{background:var(--bg)!important;}
@@ -1718,7 +1721,7 @@ font-weight:600;background:none;border:none;border-radius:6px;cursor:pointer;col
             
             <!-- LEFT TOOLBAR: CREATION & EDIT -->
             <!-- Width w-96 yapıldı -->
-            <div id="left-panel-container" class="panel rounded-xl flex flex-col pointer-events-auto" style="position:fixed;right:384px;top:56px;width:320px;max-height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;z-index:199;border-right:1px solid #383c4a;">
+            <div id="left-panel-container" class="panel rounded-xl flex flex-col pointer-events-auto" style="position:fixed;left:0;top:56px;width:252px;max-height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;z-index:199;border-right:1px solid #383c4a;">
 
 <div class="bg-gradient-to-r from-slate-800 to-slate-700 p-3 border-b border-slate-600 font-bold text-sm text-white flex justify-between items-center" style="letter-spacing: 0.5px;">
     <span><i class="fas fa-cube mr-2 text-blue-400"></i>CREATE</span>
@@ -22861,6 +22864,20 @@ window.selectObject = function(mesh, hit) {
     
     if (typeof window.updatePropertiesPanel === 'function') window.updatePropertiesPanel(mesh);
     var ts = document.getElementById('target-status'); if(ts) ts.innerText = mesh.userData.id || '-';
+
+    // ── KATIYA TIKLAYINCA EDIT PANELİNİ AÇ ──
+    if (typeof window.populateEditPanel === 'function' && mesh.userData && mesh.userData.geoParams) {
+        window.populateEditPanel(mesh);
+        var lp = document.getElementById('left-panel-container');
+        if (lp) {
+            lp.classList.add('panel-focused');           // paneli görünür yap
+            lp.scrollTop = 0;                            // edit bölümü en üstte
+            clearTimeout(window._lpFocusTimer);
+            window._lpFocusTimer = setTimeout(function(){
+                if (!lp.matches(':hover')) lp.classList.remove('panel-focused');
+            }, 6000);                                    // 6 sn sonra tekrar glass moda dön
+        }
+    }
 };
 
 window.selectSource = function(mesh, hit) {
@@ -22879,6 +22896,11 @@ window.resetSelection = function() {
     if (tc) tc.detach();
     var ts = document.getElementById('target-status'); if(ts) ts.innerText = '-';
     var ss = document.getElementById('source-status'); if(ss) ss.innerText = '-';
+    // Seçim kalkınca edit bölümünü kapat
+    var ep = document.getElementById('edit-panel');
+    if (ep) ep.classList.add('hidden');
+    var lp = document.getElementById('left-panel-container');
+    if (lp) lp.classList.remove('panel-focused');
 };
 
 // 3. TIKLAMA SİNYALİNİ ZORLA YAKALAYAN KANCA (GİZMO KORUMALI)
